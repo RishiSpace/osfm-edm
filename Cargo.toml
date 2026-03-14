@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/osfm-edm-common",
+    "crates/osfm-edm-server",
+    "crates/osfm-edm-agent",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"

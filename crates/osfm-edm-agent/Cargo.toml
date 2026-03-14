@@ -1,0 +1,48 @@
+[package]
+name = "osfm-edm-agent"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+osfm-edm-common = { path = "../osfm-edm-common" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# WebSocket
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"
+
+# TLS
+rustls = "0.23"
+rustls-pemfile = "2"
+webpki-roots = "0.26"
+
+# HTTP client (for enrollment)
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+
+# System info
+sysinfo = "0.30"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+toml = "0.8"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# CLI args
+clap = { version = "4", features = ["derive"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# System
+hostname = "0.4"

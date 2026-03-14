@@ -1,0 +1,54 @@
+version: "3.8"
+
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: osfm_edm
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: osfm_edm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U osfm_edm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://osfm_edm:secret@db:5432/osfm_edm
+      JWT_SECRET: change_me_to_a_long_random_string_at_least_64_chars
+      SERVER_PORT: "8080"
+      AGENT_PORT: "8443"
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: change_me_immediately
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_WS_URL: ws://localhost:8080
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
