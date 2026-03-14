@@ -17,7 +17,7 @@ A fully open-source, self-hosted endpoint management platform for prosumers and 
 
 ```bash
 # Clone and start the stack
-git clone https://github.com/yourusername/osfm_edm.git
+git clone https://github.com/RishiSpace/osfm_edm.git
 cd osfm_edm
 cp .env.example .env  # Edit with your values
 docker-compose up -d
