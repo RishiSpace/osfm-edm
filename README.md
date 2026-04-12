@@ -103,4 +103,4 @@ cd dashboard && npm install && npm run dev
 
 ## License
 
-MIT
+GPL-3.0
