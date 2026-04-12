@@ -90,6 +90,7 @@ async fn main() -> anyhow::Result<()> {
     // Build the Axum router.
     let app = Router::new()
         .route("/health", get(health_handler))
+        .route("/ws", get(ws::agent_hub::ws_handler))
         .nest("/api/v1", api::router())
         .layer(axum_mw::from_fn_with_state(
             state.clone(),

@@ -44,3 +44,64 @@ Built:
 - PKI CA load/create, device cert issuance, enrollment token system
 - Device CRUD + telemetry query endpoints
 - No deviations
+
+---
+
+## Phase 5 — Agent Crate — COMPLETE (2026-03-14)
+
+Built:
+- `osfm-edm-agent` crate: CLI (clap), enrollment (HTTP), WebSocket transport (exponential backoff), telemetry (sysinfo)
+- Config persistence at `~/.osfm-edm/config.toml`
+- Module stubs for policy/, jobs/, kernel_bridge
+
+---
+
+## Phase 6 — Server WebSocket Hub — COMPLETE (2026-04-12)
+
+Built:
+- `ws/agent_hub.rs`: WS upgrade, device verification, bidirectional read/write loops
+- `state.rs`: `mpsc::Sender<ServerMessage>` in `AgentConnection`, `send_to_agent`, `broadcast`
+- Heartbeat → UPDATE devices, Telemetry → INSERT device_metrics, Events → INSERT kernel_events
+- Job log/completion → UPDATE jobs, Compliance → UPSERT compliance_reports, Inventory → REPLACE installed_software
+- Pending job dispatch + policy push on agent connect
+
+---
+
+## Phase 7 — Policies, Jobs & Groups — COMPLETE (2026-04-12)
+
+Built:
+- `api/policies.rs`: CRUD + assign/unassign with WS policy push to connected agents
+- `api/jobs.rs`: create+dispatch via WS, list (with filters), get (with logs), cancel with agent revocation
+- `api/groups.rs`: CRUD + member management (add/remove devices)
+- `services/policy_engine.rs`, `services/job_queue.rs`
+- Agent `jobs/executor.rs`: process spawn (bash/sh/powershell/cmd), stdout/stderr streaming, timeout
+- Agent `policy/engine.rs`: firewall, USB, encryption, auto-update, process blacklist checks
+
+---
+
+## Phase 8 — Software Inventory — COMPLETE (2026-04-12)
+
+Built:
+- `api/software.rs`: query installed software per device
+- Agent `telemetry/software.rs`: dpkg-query + rpm -qa parsers
+- Agent `telemetry/patches.rs`: apt list --upgradable + dnf check-update parsers
+
+---
+
+## Phase 9 — Alerts & Reports — COMPLETE (2026-04-12)
+
+Built:
+- `services/alert_engine.rs`: evaluates CPU/RAM/disk rules on every telemetry insert
+- `services/notifications.rs`: log-based alert dispatch (future: SMTP/webhook)
+- `api/reports.rs`: fleet compliance summary + per-device compliance reports
+- `011_compliance_reports.sql` migration
+
+---
+
+## Phase 10 — Settings & Patches — COMPLETE (2026-04-12)
+
+Built:
+- `api/settings.rs`: server config + runtime status dashboard
+- `api/patches.rs`: per-device + fleet patch summary
+- All 10 API routes wired in `api/mod.rs`
+- Full workspace `cargo build` passes, `cargo test` passes

@@ -3,18 +3,21 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use osfm_edm_common::protocol::ServerMessage;
 use sqlx::PgPool;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::config::Config;
 use crate::services::pki::CertificateAuthority;
 
 /// Represents a connected agent's WebSocket write handle.
-/// Populated in Phase 6 when the WebSocket hub is implemented.
 #[derive(Debug)]
 pub struct AgentConnection {
     pub device_id: Uuid,
     pub connected_at: chrono::DateTime<chrono::Utc>,
+    /// Channel to push messages to this agent's WebSocket write loop.
+    pub tx: mpsc::Sender<ServerMessage>,
 }
 
 /// Central application state shared across all request handlers.
@@ -38,6 +41,22 @@ impl AppState {
             connected_agents: DashMap::new(),
             ca,
         })
+    }
+
+    /// Send a message to a specific connected agent.
+    pub async fn send_to_agent(&self, device_id: &Uuid, msg: ServerMessage) -> bool {
+        if let Some(conn) = self.connected_agents.get(device_id) {
+            conn.tx.send(msg).await.is_ok()
+        } else {
+            false
+        }
+    }
+
+    /// Broadcast a message to all connected agents.
+    pub async fn broadcast(&self, msg: ServerMessage) {
+        for entry in self.connected_agents.iter() {
+            let _ = entry.tx.send(msg.clone()).await;
+        }
     }
 }
 

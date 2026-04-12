@@ -107,12 +107,14 @@ async fn main() -> anyhow::Result<()> {
 
     // Main message handling loop — process server messages.
     tracing::info!("Agent running — press Ctrl+C to stop");
+    let device_id = config.device_id;
+
     loop {
         tokio::select! {
             msg = inbound_rx.recv() => {
                 match msg {
                     Some(server_msg) => {
-                        handle_server_message(server_msg, &outbound_tx).await;
+                        handle_server_message(device_id, server_msg, &outbound_tx).await;
                     }
                     None => {
                         tracing::error!("Inbound channel closed");
@@ -132,8 +134,9 @@ async fn main() -> anyhow::Result<()> {
 
 /// Handle incoming server messages.
 async fn handle_server_message(
+    device_id: uuid::Uuid,
     msg: osfm_edm_common::protocol::ServerMessage,
-    _outbound_tx: &mpsc::Sender<AgentMessage>,
+    outbound_tx: &mpsc::Sender<AgentMessage>,
 ) {
     use osfm_edm_common::protocol::ServerMessage;
 
@@ -144,24 +147,35 @@ async fn handle_server_message(
         ServerMessage::RequestTelemetry => {
             tracing::info!("Server requested telemetry — sending snapshot");
             let snapshot = telemetry::system::collect_snapshot();
-            let _ = _outbound_tx
+            let _ = outbound_tx
                 .send(AgentMessage::TelemetryReport { snapshot })
                 .await;
         }
         ServerMessage::PushPolicy { policies } => {
-            tracing::info!(count = policies.len(), "Received policy push");
-            // Policy enforcement will be implemented in Phase 7.
+            tracing::info!(count = policies.len(), "Received policy push — evaluating");
+            let tx = outbound_tx.clone();
+            tokio::spawn(async move {
+                policy::engine::evaluate_policies(device_id, policies, &tx).await;
+            });
         }
-        ServerMessage::DispatchJob { job_id, .. } => {
-            tracing::info!(job_id = %job_id, "Received job dispatch");
-            // Job execution will be implemented in Phase 7.
+        ServerMessage::DispatchJob { job_id, payload, .. } => {
+            tracing::info!(job_id = %job_id, "Received job dispatch — executing");
+            let tx = outbound_tx.clone();
+            tokio::spawn(async move {
+                jobs::executor::execute_job(job_id, payload, tx).await;
+            });
         }
         ServerMessage::RevokeJob { job_id } => {
             tracing::info!(job_id = %job_id, "Received job revocation");
+            // TODO: cancel running job by job_id
         }
         ServerMessage::RequestInventory => {
-            tracing::info!("Server requested inventory");
-            // Inventory collection will be implemented in Phase 9.
+            tracing::info!("Server requested inventory — collecting");
+            let software = telemetry::software::collect_software();
+            let patches = telemetry::patches::collect_patches();
+            let _ = outbound_tx
+                .send(AgentMessage::InventoryReport { software, patches })
+                .await;
         }
     }
 }
