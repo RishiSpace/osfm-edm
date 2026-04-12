@@ -1,6 +1,6 @@
 # OSFM-EDM — Open-Source Endpoint Device Management
 
-A fully open-source, self-hosted endpoint management platform for prosumers and homelabbers. Manage 2–50 devices (Windows, Linux, macOS) from a single web dashboard.
+A fully open-source, self-hosted endpoint management platform for prosumers and homelabbers.
 
 ## Features
 
@@ -17,8 +17,8 @@ A fully open-source, self-hosted endpoint management platform for prosumers and 
 
 ```bash
 # Clone and start the stack
-git clone https://github.com/RishiSpace/osfm_edm.git
-cd osfm_edm
+git clone https://github.com/RishiSpace/osfm-edm.git
+cd osfm-edm
 cp .env.example .env  # Edit with your values
 docker-compose up -d
 
@@ -74,6 +74,32 @@ cd dashboard && npm install && npm run dev
 │ (optional)   │                     │ TimescaleDB  │
 └──────────────┘                     └──────────────┘
 ```
+
+## Roadmap
+
+### ✅ Completed
+
+- [x] **Core Backend** — Axum REST API (10 route groups), JWT + TOTP auth, audit logging
+- [x] **Device Enrollment** — Internal PKI (self-signed CA), one-time tokens, mTLS certificates
+- [x] **WebSocket Hub** — Bidirectional agent ↔ server messaging, auto-reconnect
+- [x] **Telemetry** — CPU, RAM, disk, uptime collection + TimescaleDB storage
+- [x] **Policy Engine** — CRUD API, device/group assignment, compliance evaluation (firewall, encryption, USB, process blacklist)
+- [x] **Remote Jobs** — Script execution (bash/sh/powershell/cmd), live stdout/stderr streaming, timeout + cancellation
+- [x] **Device Groups** — CRUD + membership management
+- [x] **Software Inventory** — dpkg/rpm package collection, apt/dnf patch detection
+- [x] **Alerts** — Threshold-based rules (CPU/RAM/disk %), alert event tracking
+- [x] **Compliance Reports** — Fleet-wide + per-device compliance summaries
+- [x] **Agent** — Enrollment, heartbeat, telemetry, job execution, policy checks, inventory collection
+
+### 🚧 Pending
+
+- [ ] **Dashboard UI** — Next.js 14 web frontend with device overview, live telemetry charts, job console, policy editor
+- [ ] **Remote Shell** — Interactive terminal sessions over WebSocket (xterm.js in browser → PTY on agent)
+- [ ] **Linux Kernel Driver** — eBPF probes via `aya` for process exec, file access, network connections
+- [ ] **Windows Kernel Driver** — KMDF driver via `windows-drivers-rs` for registry, USB, process monitoring
+- [ ] **Platform Enforcers** — OS-level policy enforcement (iptables/ufw rules, USB disable, screensaver config)
+- [ ] **Notifications** — SMTP email, webhook, and ntfy.sh alert delivery
+- [ ] **Docker Images & CI** — Production Dockerfiles, GitHub Actions pipeline, release automation
 
 ## License
 
