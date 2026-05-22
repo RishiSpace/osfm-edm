@@ -1,11 +1,15 @@
-//! Kernel events — types for eBPF (Linux) and KMDF (Windows) event monitoring.
+//! System events — types for user-space system monitoring (process, file, network, registry).
+//!
+//! On Linux, events are collected via procfs, netlink proc connector, and fanotify.
+//! On Windows, events are collected via ETW and Win32 APIs.
+//! On macOS, events are collected via the Endpoint Security framework.
 
 use serde::{Deserialize, Serialize};
 
-/// A kernel-level event captured by the host driver infrastructure.
+/// A system-level event captured by the user-space monitoring infrastructure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
-pub enum KernelEvent {
+pub enum SystemEvent {
     ProcessStarted {
         pid: u32,
         ppid: u32,
@@ -40,7 +44,7 @@ pub enum KernelEvent {
     },
 }
 
-/// File system operation types tracked by kernel monitoring.
+/// File system operation types tracked by system monitoring.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FileOperation {

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::events::KernelEvent;
+use crate::events::SystemEvent;
 use crate::jobs::JobPayload;
 use crate::policy::{ComplianceReport, PolicyDefinition};
 
@@ -31,6 +31,19 @@ pub enum ServerMessage {
     RequestTelemetry,
     /// Request the agent to send a software/patch inventory.
     RequestInventory,
+    /// Open an interactive shell session on the agent.
+    OpenShell {
+        session_id: Uuid,
+    },
+    /// Send stdin data to an open shell session.
+    ShellInput {
+        session_id: Uuid,
+        data: String,
+    },
+    /// Close (terminate) an open shell session.
+    CloseShell {
+        session_id: Uuid,
+    },
 }
 
 /// Messages sent from an agent to the server over WebSocket.
@@ -45,9 +58,9 @@ pub enum AgentMessage {
     TelemetryReport {
         snapshot: TelemetrySnapshot,
     },
-    /// Batch of kernel events from the driver infrastructure.
-    KernelEventBatch {
-        events: Vec<KernelEvent>,
+    /// Batch of system events from the user-space monitoring infrastructure.
+    SystemEventBatch {
+        events: Vec<SystemEvent>,
     },
     /// A single log line from a running job.
     JobLog {
@@ -68,6 +81,16 @@ pub enum AgentMessage {
     InventoryReport {
         software: Vec<SoftwareItem>,
         patches: Vec<PatchItem>,
+    },
+    /// Stdout/stderr data from an open shell session.
+    ShellOutput {
+        session_id: Uuid,
+        data: String,
+    },
+    /// Notification that a shell session has ended.
+    ShellClosed {
+        session_id: Uuid,
+        exit_code: Option<i32>,
     },
 }
 

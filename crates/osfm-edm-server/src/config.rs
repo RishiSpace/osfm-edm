@@ -25,6 +25,23 @@ pub struct Config {
     pub tls_key_path: Option<String>,
     /// Allowed CORS origin for the dashboard.
     pub dashboard_origin: String,
+    // ── Notification channels ──
+    /// SMTP server hostname (optional — enables email notifications).
+    pub smtp_host: Option<String>,
+    /// SMTP port (default: 587).
+    pub smtp_port: u16,
+    /// SMTP username.
+    pub smtp_user: Option<String>,
+    /// SMTP password.
+    pub smtp_password: Option<String>,
+    /// SMTP sender address.
+    pub smtp_from: String,
+    /// Webhook URL for alert notifications (optional).
+    pub webhook_url: Option<String>,
+    /// ntfy.sh topic for push notifications (optional).
+    pub ntfy_topic: Option<String>,
+    /// ntfy.sh server URL (default: https://ntfy.sh).
+    pub ntfy_server: String,
 }
 
 impl Config {
@@ -77,6 +94,19 @@ impl Config {
             tls_cert_path,
             tls_key_path,
             dashboard_origin,
+            smtp_host: env::var("SMTP_HOST").ok().filter(|s| !s.is_empty()),
+            smtp_port: env::var("SMTP_PORT")
+                .unwrap_or_else(|_| "587".to_string())
+                .parse()
+                .unwrap_or(587),
+            smtp_user: env::var("SMTP_USER").ok().filter(|s| !s.is_empty()),
+            smtp_password: env::var("SMTP_PASSWORD").ok().filter(|s| !s.is_empty()),
+            smtp_from: env::var("SMTP_FROM")
+                .unwrap_or_else(|_| "osfm-edm@localhost".to_string()),
+            webhook_url: env::var("WEBHOOK_URL").ok().filter(|s| !s.is_empty()),
+            ntfy_topic: env::var("NTFY_TOPIC").ok().filter(|s| !s.is_empty()),
+            ntfy_server: env::var("NTFY_SERVER")
+                .unwrap_or_else(|_| "https://ntfy.sh".to_string()),
         })
     }
 }

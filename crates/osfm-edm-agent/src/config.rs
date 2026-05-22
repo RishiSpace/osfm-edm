@@ -23,6 +23,15 @@ pub struct AgentConfig {
     /// Telemetry interval in seconds.
     #[serde(default = "default_telemetry_interval")]
     pub telemetry_interval: u64,
+    /// Whether the system monitor (process/file/network events) is enabled.
+    #[serde(default = "default_monitor_enabled")]
+    pub monitor_enabled: bool,
+    /// How often to flush system event batches to the server (seconds).
+    #[serde(default = "default_monitor_batch_interval")]
+    pub monitor_batch_interval: u64,
+    /// Paths to monitor for file events (fanotify mount points on Linux).
+    #[serde(default = "default_monitor_paths")]
+    pub monitor_paths: Vec<String>,
 }
 
 fn default_heartbeat_interval() -> u64 {
@@ -31,6 +40,18 @@ fn default_heartbeat_interval() -> u64 {
 
 fn default_telemetry_interval() -> u64 {
     60
+}
+
+fn default_monitor_enabled() -> bool {
+    true
+}
+
+fn default_monitor_batch_interval() -> u64 {
+    5
+}
+
+fn default_monitor_paths() -> Vec<String> {
+    vec!["/".to_string()]
 }
 
 impl AgentConfig {

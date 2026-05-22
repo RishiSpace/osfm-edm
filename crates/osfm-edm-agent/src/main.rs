@@ -6,8 +6,9 @@
 mod config;
 mod enrollment;
 mod jobs;
-mod kernel_bridge;
 mod policy;
+mod shell;
+mod system_monitor;
 mod telemetry;
 mod transport;
 
@@ -29,6 +30,10 @@ struct Cli {
     /// One-time enrollment token
     #[arg(long)]
     token: Option<String>,
+
+    /// Disable system monitoring (process/file/network events)
+    #[arg(long, default_value_t = false)]
+    no_monitor: bool,
 }
 
 #[tokio::main]
@@ -105,6 +110,28 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Spawn system monitor (process/file/network events).
+    let monitor_config = system_monitor::MonitorConfig {
+        enabled: config.monitor_enabled && !cli.no_monitor,
+        batch_interval_secs: config.monitor_batch_interval,
+        monitor_paths: config.monitor_paths.clone(),
+        collect: vec!["process".into(), "file".into(), "network".into()],
+    };
+    let monitor_tx = outbound_tx.clone();
+    tokio::spawn(async move {
+        let mut event_rx = system_monitor::start(monitor_config).await;
+        while let Some(events) = event_rx.recv().await {
+            if !events.is_empty() {
+                let _ = monitor_tx
+                    .send(AgentMessage::SystemEventBatch { events })
+                    .await;
+            }
+        }
+    });
+
+    // Create the shell session manager.
+    let mut shell_manager = shell::session::ShellManager::new(outbound_tx.clone());
+
     // Main message handling loop — process server messages.
     tracing::info!("Agent running — press Ctrl+C to stop");
     let device_id = config.device_id;
@@ -114,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
             msg = inbound_rx.recv() => {
                 match msg {
                     Some(server_msg) => {
-                        handle_server_message(device_id, server_msg, &outbound_tx).await;
+                        handle_server_message(device_id, server_msg, &outbound_tx, &mut shell_manager).await;
                     }
                     None => {
                         tracing::error!("Inbound channel closed");
@@ -137,6 +164,7 @@ async fn handle_server_message(
     device_id: uuid::Uuid,
     msg: osfm_edm_common::protocol::ServerMessage,
     outbound_tx: &mpsc::Sender<AgentMessage>,
+    shell_manager: &mut shell::session::ShellManager,
 ) {
     use osfm_edm_common::protocol::ServerMessage;
 
@@ -176,6 +204,18 @@ async fn handle_server_message(
             let _ = outbound_tx
                 .send(AgentMessage::InventoryReport { software, patches })
                 .await;
+        }
+        // ── Remote Shell ──
+        ServerMessage::OpenShell { session_id } => {
+            tracing::info!(session_id = %session_id, "Opening remote shell session");
+            shell_manager.open_session(session_id);
+        }
+        ServerMessage::ShellInput { session_id, data } => {
+            shell_manager.send_input(session_id, data).await;
+        }
+        ServerMessage::CloseShell { session_id } => {
+            tracing::info!(session_id = %session_id, "Closing remote shell session");
+            shell_manager.close_session(session_id);
         }
     }
 }

@@ -105,8 +105,8 @@ fn check_rule(rule: &PolicyRule) -> Option<ComplianceViolation> {
                 None
             }
         }
-        PolicyRule::KernelEvents { .. } => {
-            // Kernel event collection config — no compliance check needed.
+        PolicyRule::SystemEvents { .. } => {
+            // System event collection config — no compliance check needed.
             None
         }
     }
@@ -139,7 +139,7 @@ fn check_blacklisted_processes(deny: &[String]) -> Vec<String> {
     let mut found = Vec::new();
     let sys = sysinfo::System::new_all();
     for process in sys.processes().values() {
-        let name = process.name().to_str().unwrap_or_default().to_string();
+        let name = process.name().to_string();
         if deny.iter().any(|d| name.contains(d.as_str())) {
             found.push(name);
         }

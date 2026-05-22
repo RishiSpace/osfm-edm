@@ -2,10 +2,11 @@
 
 use sqlx::PgPool;
 use uuid::Uuid;
+use crate::config::Config;
 
 /// Check alert rules for a device after a telemetry snapshot is received.
 /// Called from the WebSocket hub after inserting telemetry.
-pub async fn check_alerts(db: &PgPool, device_id: Uuid) {
+pub async fn check_alerts(db: &PgPool, config: &Config, device_id: Uuid) {
     // Fetch active alert rules.
     #[derive(sqlx::FromRow)]
     struct AlertRule {
@@ -92,10 +93,10 @@ pub async fn check_alerts(db: &PgPool, device_id: Uuid) {
                 "Alert triggered"
             );
 
-            // Insert alert event.
-            let _ = sqlx::query(
+            // Insert alert event and dispatch notification.
+            let event_id: Option<Uuid> = sqlx::query_scalar(
                 "INSERT INTO alert_events (rule_id, device_id, severity, message, triggered_at) \
-                 VALUES ($1, $2, $3, $4, now())",
+                 VALUES ($1, $2, $3, $4, now()) RETURNING id",
             )
             .bind(rule.id)
             .bind(device_id)
@@ -104,8 +105,15 @@ pub async fn check_alerts(db: &PgPool, device_id: Uuid) {
                 "{}: {} is {:.1} (threshold: {} {})",
                 rule.name, rule.metric, value, rule.operator, rule.threshold
             ))
-            .execute(db)
-            .await;
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten();
+
+            // Dispatch notifications (SMTP, webhook, ntfy.sh).
+            if let Some(event_id) = event_id {
+                crate::services::notifications::notify(db, event_id, config).await;
+            }
         }
     }
 }

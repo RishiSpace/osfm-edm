@@ -33,11 +33,11 @@
 │  (per device) │                              │                     │
 └──────┬───────┘                              └──────────┬──────────┘
        │                                                  │
-       │ sysinfo / eBPF / KMDF                           │ sqlx
+       │ sysinfo / procfs / netlink            │ sqlx
        ▼                                                  ▼
   ┌──────────┐                                 ┌──────────────────┐
   │  OS / HW │                                 │  TimescaleDB     │
-  │  Kernel  │                                 │  (PostgreSQL)    │
+  │  (root)  │                                 │  (PostgreSQL)    │
   └──────────┘                                 └──────────────────┘
 ```
 
@@ -216,7 +216,11 @@ The **per-device daemon** runs on every managed endpoint. It:
 2. **Connects** to the server via WebSocket with automatic exponential backoff reconnection (1s → 2s → 4s → ... → 60s max)
 3. **Sends heartbeat + telemetry** every 60 seconds (configurable):
    - CPU usage (%), RAM used/total (MB), disk used/total (GB), uptime (seconds)
-4. **Handles server messages**: policy pushes, job dispatch, inventory requests
+4. **Monitors system events** via user-space APIs (if enabled):
+   - Processes (fork/exec/exit) via netlink proc connector
+   - File access events via fanotify
+   - Network connections via /proc/net/tcp parsing
+5. **Handles server messages**: policy pushes, job dispatch, inventory requests
 
 **Agent config** is stored at `~/.osfm-edm/config.toml`:
 ```toml
@@ -227,6 +231,9 @@ key_path = "/home/user/.osfm-edm/device.key"
 ca_path = "/home/user/.osfm-edm/ca.crt"
 heartbeat_interval = 60
 telemetry_interval = 60
+monitor_enabled = true
+monitor_batch_interval = 5
+monitor_paths = ["/"]
 ```
 
 ### Internal PKI
@@ -432,6 +439,6 @@ cargo test -p osfm-edm-common   # Just the common crate (9 tests)
 ### Project conventions
 
 - **No panics in production code** — all errors use `Result` / `ApiError`
-- **Stub modules** are marked with comments like `(stub — Phase N)` indicating planned implementation
+- **Stub modules** are marked with comments indicating planned implementation approach
 - **Database access** is via raw SQL with `sqlx::query_as` — no ORM
 - **Crate naming**: `osfm-edm-*` (Cargo names) / `osfm_edm_*` (Rust imports)

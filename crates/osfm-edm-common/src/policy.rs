@@ -32,8 +32,13 @@ pub enum PolicyRule {
     UsbStorage {
         allow: bool,
     },
-    KernelEvents {
+    SystemEvents {
+        /// Which event types to collect (e.g., "process", "file", "network").
         collect: Vec<String>,
+        /// File/directory paths to monitor (default: ["/"]).
+        monitor_paths: Option<Vec<String>>,
+        /// How often to flush event batches to the server, in seconds (default: 5).
+        batch_interval_secs: Option<u64>,
     },
 }
 

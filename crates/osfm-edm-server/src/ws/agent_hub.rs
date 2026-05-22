@@ -185,19 +185,19 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
             .await;
 
             // Check alert rules against this fresh telemetry.
-            crate::services::alert_engine::check_alerts(&state.db, device_id).await;
+            crate::services::alert_engine::check_alerts(&state.db, &state.config, device_id).await;
         }
 
-        AgentMessage::KernelEventBatch { events } => {
-            tracing::debug!(device_id = %device_id, count = events.len(), "Kernel events received");
+        AgentMessage::SystemEventBatch { events } => {
+            tracing::debug!(device_id = %device_id, count = events.len(), "System events received");
             for event in &events {
                 let event_json = serde_json::to_value(event).unwrap_or_default();
                 let event_type = match event {
-                    osfm_edm_common::events::KernelEvent::ProcessStarted { .. } => "process_started",
-                    osfm_edm_common::events::KernelEvent::ProcessExited { .. } => "process_exited",
-                    osfm_edm_common::events::KernelEvent::FileAccessed { .. } => "file_accessed",
-                    osfm_edm_common::events::KernelEvent::NetworkConnected { .. } => "network_connected",
-                    osfm_edm_common::events::KernelEvent::RegistryChanged { .. } => "registry_changed",
+                    osfm_edm_common::events::SystemEvent::ProcessStarted { .. } => "process_started",
+                    osfm_edm_common::events::SystemEvent::ProcessExited { .. } => "process_exited",
+                    osfm_edm_common::events::SystemEvent::FileAccessed { .. } => "file_accessed",
+                    osfm_edm_common::events::SystemEvent::NetworkConnected { .. } => "network_connected",
+                    osfm_edm_common::events::SystemEvent::RegistryChanged { .. } => "registry_changed",
                 };
                 let _ = sqlx::query(
                     "INSERT INTO kernel_events (device_id, time, event_type, payload) VALUES ($1, now(), $2, $3)",
@@ -284,6 +284,26 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
                 .execute(&state.db)
                 .await;
             }
+        }
+
+        AgentMessage::ShellOutput { session_id, data } => {
+            tracing::debug!(
+                device_id = %device_id,
+                session_id = %session_id,
+                bytes = data.len(),
+                "Shell output received"
+            );
+            // TODO: relay to dashboard via SSE/WS when dashboard is implemented.
+            // For now, the output is logged and available for future streaming.
+        }
+
+        AgentMessage::ShellClosed { session_id, exit_code } => {
+            tracing::info!(
+                device_id = %device_id,
+                session_id = %session_id,
+                exit_code = ?exit_code,
+                "Shell session closed"
+            );
         }
     }
 }

@@ -9,6 +9,7 @@ pub mod patches;
 pub mod policies;
 pub mod reports;
 pub mod settings;
+pub mod shell;
 pub mod software;
 
 use std::sync::Arc;
@@ -30,4 +31,5 @@ pub fn router() -> Router<Arc<AppState>> {
         .nest("/patches", patches::router())
         .nest("/reports", reports::router())
         .nest("/settings", settings::router())
+        .nest("/shell", shell::router())
 }

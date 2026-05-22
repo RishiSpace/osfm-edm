@@ -105,3 +105,27 @@ Built:
 - `api/patches.rs`: per-device + fleet patch summary
 - All 10 API routes wired in `api/mod.rs`
 - Full workspace `cargo build` passes, `cargo test` passes
+
+---
+
+## Phase 11 — System Monitor & Platform Enforcers — COMPLETE (2026-05-22)
+
+Refactored from kernel drivers (eBPF/KMDF) to user-space system monitoring:
+
+Built:
+- `system_monitor/mod.rs`: `MonitorConfig`, platform dispatch, event batching
+- `system_monitor/linux.rs`: Process events via netlink proc connector (with /proc polling fallback), file events via fanotify, network connections via /proc/net/tcp parsing
+- `system_monitor/windows.rs`: Documented stub (planned: ETW/Win32)
+- `system_monitor/macos.rs`: Documented stub (planned: Endpoint Security)
+- `policy/enforcers/linux.rs`: Firewall (ufw), USB storage (sysfs/modprobe), screen lock (gsettings/xfconf/xset), auto-updates (apt)
+- `policy/enforcers/windows.rs`: Documented stub (planned: netsh, registry, powercfg)
+- `policy/enforcers/macos.rs`: Documented stub (planned: pfctl, pmset, defaults)
+
+Renamed across all crates:
+- `KernelEvent` → `SystemEvent` (common crate)
+- `KernelEventBatch` → `SystemEventBatch` (protocol)
+- `PolicyRule::KernelEvents` → `PolicyRule::SystemEvents` (policy)
+- Deleted `kernel_bridge.rs`, replaced with `system_monitor/` module
+
+Agent config additions: `monitor_enabled`, `monitor_batch_interval`, `monitor_paths`
+- Full workspace `cargo build` passes, `cargo test` passes (9/9 tests)

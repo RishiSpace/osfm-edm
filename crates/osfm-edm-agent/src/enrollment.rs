@@ -91,6 +91,9 @@ pub async fn enroll(server_url: &str, token: &str) -> Result<AgentConfig, Enroll
         ca_path: ca_path.to_string_lossy().to_string(),
         heartbeat_interval: 60,
         telemetry_interval: 60,
+        monitor_enabled: true,
+        monitor_batch_interval: 5,
+        monitor_paths: vec!["/".to_string()],
     };
 
     config.save()?;

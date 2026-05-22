@@ -2,15 +2,15 @@
 
 #[cfg(test)]
 mod tests {
-    use osfm_edm_common::events::{FileOperation, KernelEvent, NetworkProtocol};
+    use osfm_edm_common::events::{FileOperation, SystemEvent, NetworkProtocol};
     use osfm_edm_common::jobs::{JobPayload, JobStatus, ShellType};
     use osfm_edm_common::policy::{PolicyDefinition, PolicyRule, UpdatePolicy};
     use osfm_edm_common::protocol::{AgentMessage, ServerMessage, TelemetrySnapshot};
     use uuid::Uuid;
 
     #[test]
-    fn kernel_event_round_trip() {
-        let event = KernelEvent::ProcessStarted {
+    fn system_event_round_trip() {
+        let event = SystemEvent::ProcessStarted {
             pid: 1234,
             ppid: 1,
             path: "/usr/bin/ls".to_string(),
@@ -19,9 +19,9 @@ mod tests {
             timestamp: 1700000000,
         };
         let json = serde_json::to_string(&event).unwrap();
-        let deserialized: KernelEvent = serde_json::from_str(&json).unwrap();
+        let deserialized: SystemEvent = serde_json::from_str(&json).unwrap();
         match deserialized {
-            KernelEvent::ProcessStarted { pid, ppid, path, .. } => {
+            SystemEvent::ProcessStarted { pid, ppid, path, .. } => {
                 assert_eq!(pid, 1234);
                 assert_eq!(ppid, 1);
                 assert_eq!(path, "/usr/bin/ls");
@@ -31,8 +31,8 @@ mod tests {
     }
 
     #[test]
-    fn kernel_event_tagged_serialization() {
-        let event = KernelEvent::FileAccessed {
+    fn system_event_tagged_serialization() {
+        let event = SystemEvent::FileAccessed {
             pid: 42,
             path: "/etc/passwd".to_string(),
             operation: FileOperation::Read,
@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn network_event_round_trip() {
-        let event = KernelEvent::NetworkConnected {
+        let event = SystemEvent::NetworkConnected {
             pid: 99,
             src: "192.168.1.10:50000".to_string(),
             dst: "93.184.216.34:443".to_string(),
@@ -53,9 +53,9 @@ mod tests {
             timestamp: 1700000000,
         };
         let json = serde_json::to_string(&event).unwrap();
-        let de: KernelEvent = serde_json::from_str(&json).unwrap();
+        let de: SystemEvent = serde_json::from_str(&json).unwrap();
         match de {
-            KernelEvent::NetworkConnected { protocol, .. } => {
+            SystemEvent::NetworkConnected { protocol, .. } => {
                 let proto_json = serde_json::to_string(&protocol).unwrap();
                 assert_eq!(proto_json, r#""tcp""#);
             }
@@ -173,6 +173,40 @@ mod tests {
         match de {
             AgentMessage::Heartbeat { agent_version } => {
                 assert_eq!(agent_version, "0.1.0");
+            }
+            _ => panic!("Unexpected variant"),
+        }
+    }
+
+    #[test]
+    fn shell_open_round_trip() {
+        let session_id = Uuid::new_v4();
+        let msg = ServerMessage::OpenShell { session_id };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("open_shell"));
+        let de: ServerMessage = serde_json::from_str(&json).unwrap();
+        match de {
+            ServerMessage::OpenShell { session_id: sid } => {
+                assert_eq!(sid, session_id);
+            }
+            _ => panic!("Unexpected variant"),
+        }
+    }
+
+    #[test]
+    fn shell_output_round_trip() {
+        let session_id = Uuid::new_v4();
+        let msg = AgentMessage::ShellOutput {
+            session_id,
+            data: "hello world\n".to_string(),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("shell_output"));
+        let de: AgentMessage = serde_json::from_str(&json).unwrap();
+        match de {
+            AgentMessage::ShellOutput { session_id: sid, data } => {
+                assert_eq!(sid, session_id);
+                assert_eq!(data, "hello world\n");
             }
             _ => panic!("Unexpected variant"),
         }

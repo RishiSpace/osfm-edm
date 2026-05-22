@@ -9,7 +9,7 @@ A fully open-source, self-hosted endpoint management platform for prosumers and 
 - **Policy Enforcement** — Screen lock, firewall, software restrictions
 - **Software & Patch Tracking** — Installed software inventory and pending patches
 - **Remote Execution** — Run scripts, push files, open remote shell
-- **Kernel Monitoring** — eBPF (Linux) and KMDF (Windows) process/network/file events
+- **System Monitoring** — User-space process, file, and network event tracking (procfs, netlink, fanotify)
 - **Alerts & Notifications** — Configurable rules with email, webhook, ntfy.sh
 - **Compliance Reporting** — Per-device policy compliance with CSV export
 
@@ -39,8 +39,8 @@ irm https://your-server:8080/enroll.ps1 | iex -Args "--token <enrollment-token>"
 
 | Layer | Technology |
 |---|---|
-| Kernel Driver (Linux) | Rust + aya eBPF |
-| Kernel Driver (Windows) | Rust + windows-drivers-rs (KMDF) |
+| System Monitor (Linux) | Rust (procfs, netlink proc connector, fanotify) |
+| System Monitor (Windows) | Planned: ETW, Win32 APIs |
 | Agent | Rust (Tokio, sysinfo, rustls) |
 | API Server | Rust (Axum, SQLx, Tower) |
 | Dashboard | TypeScript (Next.js 14, Tailwind, shadcn/ui) |
@@ -67,12 +67,13 @@ cd dashboard && npm install && npm run dev
 │  (per host) │                      │  (Axum)      │   REST     │ (Next.js) │
 └──────┬──────┘                      └──────┬───────┘            └───────────┘
        │                                    │
-       │ eBPF / KMDF                        │ SQLx
+       │ procfs / netlink / fanotify        │ SQLx
        ▼                                    ▼
 ┌──────────────┐                     ┌──────────────┐
-│ Kernel Driver│                     │ PostgreSQL + │
-│ (optional)   │                     │ TimescaleDB  │
-└──────────────┘                     └──────────────┘
+│ System       │                     │ PostgreSQL + │
+│ Monitor      │                     │ TimescaleDB  │
+│ (user-space) │                     └──────────────┘
+└──────────────┘
 ```
 
 ## Roadmap
@@ -90,14 +91,16 @@ cd dashboard && npm install && npm run dev
 - [x] **Alerts** — Threshold-based rules (CPU/RAM/disk %), alert event tracking
 - [x] **Compliance Reports** — Fleet-wide + per-device compliance summaries
 - [x] **Agent** — Enrollment, heartbeat, telemetry, job execution, policy checks, inventory collection
+- [x] **Linux System Monitor** — User-space process (netlink proc connector), file (fanotify), and network (/proc/net/tcp) event tracking
+- [x] **Linux Platform Enforcers** — Firewall (ufw), USB storage (sysfs/modprobe), screen lock (gsettings/xset), auto-updates (apt)
 
 ### 🚧 Pending
 
 - [ ] **Dashboard UI** — Next.js 14 web frontend with device overview, live telemetry charts, job console, policy editor
 - [ ] **Remote Shell** — Interactive terminal sessions over WebSocket (xterm.js in browser → PTY on agent)
-- [ ] **Linux Kernel Driver** — eBPF probes via `aya` for process exec, file access, network connections
-- [ ] **Windows Kernel Driver** — KMDF driver via `windows-drivers-rs` for registry, USB, process monitoring
-- [ ] **Platform Enforcers** — OS-level policy enforcement (iptables/ufw rules, USB disable, screensaver config)
+- [ ] **Windows System Monitor** — ETW-based process, file, network, and registry event collection
+- [ ] **macOS System Monitor** — Endpoint Security framework for process, file, and network events
+- [ ] **Platform Enforcers (Windows/macOS)** — OS-level policy enforcement via netsh, powercfg, pfctl, pmset
 - [ ] **Notifications** — SMTP email, webhook, and ntfy.sh alert delivery
 - [ ] **Docker Images & CI** — Production Dockerfiles, GitHub Actions pipeline, release automation
 
