@@ -104,6 +104,39 @@ cd dashboard && npm install && npm run dev
 - [ ] **Notifications** — SMTP email, webhook, and ntfy.sh alert delivery
 - [ ] **Docker Images & CI** — Production Dockerfiles, GitHub Actions pipeline, release automation
 
+## Current Implementation Status
+
+**Snapshot**: June 2026
+
+**Overall progress: ~42%** toward the full project goal (usable self-hosted platform with working dashboard, reliable alerts, active policy enforcement, and easy deployment).
+
+The project has delivered most of the Rust backend and Linux agent code corresponding to the 11 phases listed above. However, several integration gaps, schema mismatches, and the complete absence of the dashboard mean the system is not yet at the usable platform stage described in the Features and Roadmap.
+
+### Component Status
+
+| Component                          | Status            | Progress | Details |
+|------------------------------------|-------------------|----------|---------|
+| Server Core (Axum, Auth, PKI, WS Hub) | Mostly complete | 90%     | Single port (8080) serves both REST API and `/ws`. mTLS not enforced on agent connections yet. `AGENT_PORT` config value is unused. |
+| REST APIs (auth, devices, policies, jobs, groups, reports, software, etc.) | Good | 85%     | All route groups implemented. Basic CRUD, job dispatch, compliance summaries, and enrollment token flows work. |
+| Agent Core (enrollment, WS transport, heartbeat, telemetry, jobs) | Good | 85%     | Enrollment flow, persistent connection with backoff, and job execution (scripts, packages, **PushFile**, reboot, etc.) are functional. |
+| Remote Shell                       | Partial           | 65%     | Protocol + agent-side piped shell (`/bin/sh -i` or `cmd.exe`) + server API complete. Not a real PTY. Shell output is only logged server-side (no live relay implemented). |
+| Linux System Monitor               | Implemented       | 75%     | User-space using netlink proc connector + fanotify + /proc/net. Requires elevated privileges. **Broken in practice** due to `kernel_events` schema mismatch (`payload` column vs migration). |
+| Policy System                      | Partial           | 60%     | Full CRUD + group/device assignment + WebSocket push + compliance *reporting* works. Linux enforcers (ufw, USB blocking, screen lock, auto-updates) are coded but **never invoked**. |
+| Alerts & Notifications             | Non-functional    | 25%     | Alert engine and full notification code (SMTP via lettre, webhooks, ntfy.sh) exist in `services/`. **Schema mismatch** with `007_alerts.sql` (queries expect columns that don't exist; no `alert_rules` management API). |
+| Dashboard / Web UI                 | Not started       | 0%      | 0%. No `dashboard/` directory. `docker-compose.yml` references it and will fail. |
+| Cross-platform (Windows / macOS)   | Stubs             | 10%     | System monitor and enforcer modules contain only "not yet implemented" placeholders and `pending()` futures. |
+| Deployment (Docker, Compose, CI)   | Non-functional    | 10%     | Compose files exist but no `Dockerfile*` are present anywhere in the repo. Quick Start will not work. |
+
+**Overall assessment**: The core Rust foundation (server + Linux agent) is substantially built, but integration issues prevent many advertised features from working end-to-end. This aligns with the ~42% overall progress figure above.
+
+### Known Issues Preventing Full Testing
+- Agent WebSocket connections fail after enrollment (server requires `?device_id=...` query param; agent never sends it).
+- Telemetry and event paths can trigger runtime SQL errors due to column mismatches.
+- `docker compose up` (or the Quick Start) cannot succeed in the current state.
+- No web UI exists for any of the data.
+
+See [PROGRESS.md](PROGRESS.md) for phase-by-phase history and [ARCHITECTURE.md](ARCHITECTURE.md) for intended design (some details have drifted).
+
 ## License
 
 GPL-3.0
