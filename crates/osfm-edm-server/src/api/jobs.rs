@@ -18,8 +18,8 @@ use crate::state::AppState;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_jobs).post(create_job))
-        .route("/{id}", get(get_job))
-        .route("/{id}/cancel", post(cancel_job))
+        .route("/:id", get(get_job))
+        .route("/:id/cancel", post(cancel_job))
 }
 
 // --- Row types ---
@@ -34,7 +34,7 @@ pub struct JobRow {
     pub log_output: Option<serde_json::Value>,
     pub created_by: Option<Uuid>,
     pub created_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub finished_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 // --- Request types ---
@@ -59,6 +59,8 @@ async fn create_job(
     auth: AuthUser,
     Json(body): Json<CreateJobRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     // Verify device exists.
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE id = $1)")
         .bind(body.device_id)
@@ -71,7 +73,7 @@ async fn create_job(
     // Insert the job.
     let job: JobRow = sqlx::query_as(
         "INSERT INTO jobs (device_id, payload, status, created_by) VALUES ($1, $2, 'pending', $3) \
-         RETURNING id, device_id, payload, status, exit_code, log_output, created_by, created_at, completed_at",
+         RETURNING id, device_id, payload, status, exit_code, log_output, created_by, created_at, finished_at",
     )
     .bind(body.device_id)
     .bind(&body.payload)
@@ -85,13 +87,15 @@ async fn create_job(
             ApiError::BadRequest(format!("Invalid job payload: {e}"))
         })?;
 
+    let signature = state.sign_job(&job.id, &payload);
+
     let dispatched = state
         .send_to_agent(
             &body.device_id,
             ServerMessage::DispatchJob {
                 job_id: job.id,
                 payload,
-                signature: String::new(), // TODO: Ed25519 signing
+                signature,
             },
         )
         .await;
@@ -120,7 +124,7 @@ async fn list_jobs(
 ) -> ApiResult<Json<serde_json::Value>> {
     let jobs: Vec<JobRow> = if let Some(device_id) = params.device_id {
         sqlx::query_as(
-            "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, completed_at \
+            "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, finished_at \
              FROM jobs WHERE device_id = $1 ORDER BY created_at DESC LIMIT 100",
         )
         .bind(device_id)
@@ -128,7 +132,7 @@ async fn list_jobs(
         .await?
     } else if let Some(status) = &params.status {
         sqlx::query_as(
-            "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, completed_at \
+            "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, finished_at \
              FROM jobs WHERE status = $1 ORDER BY created_at DESC LIMIT 100",
         )
         .bind(status)
@@ -136,7 +140,7 @@ async fn list_jobs(
         .await?
     } else {
         sqlx::query_as(
-            "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, completed_at \
+            "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, finished_at \
              FROM jobs ORDER BY created_at DESC LIMIT 100",
         )
         .fetch_all(&state.db)
@@ -153,7 +157,7 @@ async fn get_job(
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let job: JobRow = sqlx::query_as(
-        "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, completed_at \
+        "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, finished_at \
          FROM jobs WHERE id = $1",
     )
     .bind(id)
@@ -167,9 +171,10 @@ async fn get_job(
 /// POST /api/v1/jobs/:id/cancel — cancel/revoke a running job.
 async fn cancel_job(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
     // Get the job to find its device.
     #[derive(sqlx::FromRow)]
     struct JobDevice {
@@ -192,7 +197,7 @@ async fn cancel_job(
         .send_to_agent(&job.device_id, ServerMessage::RevokeJob { job_id: id })
         .await;
 
-    let _ = sqlx::query("UPDATE jobs SET status = 'cancelled', completed_at = now() WHERE id = $1")
+    let _ = sqlx::query("UPDATE jobs SET status = 'cancelled', finished_at = now() WHERE id = $1")
         .bind(id)
         .execute(&state.db)
         .await;

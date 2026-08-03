@@ -6,15 +6,20 @@
 
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
-use axum::response::IntoResponse;
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use futures_util::{SinkExt, StreamExt};
 use osfm_edm_common::protocol::{AgentMessage, ServerMessage};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::state::{AgentConnection, AppState};
+
+/// Maximum number of system events accepted in a single batch (DoS guard).
+const MAX_EVENTS_PER_BATCH: usize = 1000;
 
 /// Query parameters for the WebSocket upgrade request.
 #[derive(Debug, Deserialize)]
@@ -24,15 +29,61 @@ pub struct WsParams {
 }
 
 /// WebSocket upgrade handler — called from the router at `/ws`.
+///
+/// The agent must present its per-device token (issued at enrollment) as an
+/// `Authorization: Bearer <token>` header. The server compares the SHA-256 of
+/// the presented token against the stored hash — the device_id alone is NOT
+/// an authentication credential.
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     Query(params): Query<WsParams>,
-) -> impl IntoResponse {
+    headers: HeaderMap,
+) -> Response {
     let device_id = params.device_id;
     tracing::info!(device_id = %device_id, "Agent WebSocket upgrade request");
 
+    if !authenticate_agent(&state, device_id, &headers).await {
+        tracing::warn!(device_id = %device_id, "Rejected WebSocket: agent authentication failed");
+        return (StatusCode::UNAUTHORIZED, "invalid or missing device token").into_response();
+    }
+
     ws.on_upgrade(move |socket| handle_agent_connection(socket, state, device_id))
+        .into_response()
+}
+
+/// Verify the agent's Bearer token against the stored SHA-256 hash.
+async fn authenticate_agent(state: &AppState, device_id: Uuid, headers: &HeaderMap) -> bool {
+    let presented = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "));
+
+    let Some(token) = presented else {
+        tracing::warn!(device_id = %device_id, "Missing Authorization header on agent WS");
+        return false;
+    };
+
+    let presented_hash = format!("{:x}", Sha256::digest(token.as_bytes()));
+
+    let stored: Option<String> =
+        sqlx::query_scalar("SELECT auth_token_hash FROM devices WHERE id = $1")
+            .bind(device_id)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+
+    match stored {
+        Some(hash) => hash == presented_hash,
+        None => {
+            tracing::warn!(
+                device_id = %device_id,
+                "Device has no auth token (enrolled before token auth) — re-enroll the agent"
+            );
+            false
+        }
+    }
 }
 
 /// Manages the full lifecycle of a single agent WebSocket connection.
@@ -190,7 +241,19 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
 
         AgentMessage::SystemEventBatch { events } => {
             tracing::debug!(device_id = %device_id, count = events.len(), "System events received");
-            for event in &events {
+            // DoS guard: cap batch size, skip the excess rather than aborting.
+            let accepted = if events.len() > MAX_EVENTS_PER_BATCH {
+                tracing::warn!(
+                    device_id = %device_id,
+                    count = events.len(),
+                    max = MAX_EVENTS_PER_BATCH,
+                    "Event batch exceeds limit — truncating"
+                );
+                &events[..MAX_EVENTS_PER_BATCH]
+            } else {
+                &events[..]
+            };
+            for event in accepted {
                 let event_json = serde_json::to_value(event).unwrap_or_default();
                 let event_type = match event {
                     osfm_edm_common::events::SystemEvent::ProcessStarted { .. } => "process_started",
@@ -216,13 +279,13 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
             stream,
         } => {
             tracing::debug!(job_id = %job_id, stream, "Job log line");
-            // Append the log line to the job's log_output JSONB array.
-            let log_entry = serde_json::json!({ "stream": stream, "line": line, "ts": chrono::Utc::now().to_rfc3339() });
+            // Insert the log line into the job_logs table.
             let _ = sqlx::query(
-                "UPDATE jobs SET log_output = COALESCE(log_output, '[]'::jsonb) || $1::jsonb WHERE id = $2",
+                "INSERT INTO job_logs (job_id, line, stream) VALUES ($1, $2, $3)",
             )
-            .bind(&log_entry)
             .bind(job_id)
+            .bind(&line)
+            .bind(&stream)
             .execute(&state.db)
             .await;
         }
@@ -231,7 +294,7 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
             tracing::info!(job_id = %job_id, exit_code, "Job completed");
             let status = if exit_code == 0 { "completed" } else { "failed" };
             let _ = sqlx::query(
-                "UPDATE jobs SET status = $1, exit_code = $2, completed_at = now() WHERE id = $3",
+                "UPDATE jobs SET status = $1, exit_code = $2, finished_at = now() WHERE id = $3",
             )
             .bind(status)
             .bind(exit_code)
@@ -265,24 +328,9 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
                 patch_count = patches.len(),
                 "Inventory report received"
             );
-            // Clear old inventory and insert fresh.
-            let _ = sqlx::query("DELETE FROM installed_software WHERE device_id = $1")
-                .bind(device_id)
-                .execute(&state.db)
-                .await;
-
-            for item in &software {
-                let _ = sqlx::query(
-                    "INSERT INTO installed_software (device_id, name, version, publisher, install_date) \
-                     VALUES ($1, $2, $3, $4, $5)",
-                )
-                .bind(device_id)
-                .bind(&item.name)
-                .bind(item.version.as_deref())
-                .bind(item.publisher.as_deref())
-                .bind(item.install_date.as_deref())
-                .execute(&state.db)
-                .await;
+            // Replace software inventory + upsert patches atomically.
+            if let Err(e) = persist_inventory(&state.db, device_id, &software, &patches).await {
+                tracing::error!(device_id = %device_id, error = %e, "Failed to persist inventory");
             }
         }
 
@@ -293,8 +341,15 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
                 bytes = data.len(),
                 "Shell output received"
             );
-            // TODO: relay to dashboard via SSE/WS when dashboard is implemented.
-            // For now, the output is logged and available for future streaming.
+            // Relay to SSE subscribers via broadcast channel.
+            if let Some(tx) = state.shell_broadcasts.get(&session_id) {
+                let _ = tx.send(crate::state::ShellEvent {
+                    session_id,
+                    data,
+                    closed: false,
+                    exit_code: None,
+                });
+            }
         }
 
         AgentMessage::ShellClosed { session_id, exit_code } => {
@@ -304,6 +359,79 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
                 exit_code = ?exit_code,
                 "Shell session closed"
             );
+            // Broadcast close event, then remove the broadcast channel.
+            if let Some(tx) = state.shell_broadcasts.get(&session_id) {
+                let _ = tx.send(crate::state::ShellEvent {
+                    session_id,
+                    data: String::new(),
+                    closed: true,
+                    exit_code,
+                });
+            }
+            state.shell_broadcasts.remove(&session_id);
+            state.shell_sessions.remove(&session_id);
         }
     }
+}
+
+/// Replace a device's software inventory and upsert its patch list in one
+/// transaction (prevents torn state where old and new inventory interleave).
+async fn persist_inventory(
+    db: &sqlx::PgPool,
+    device_id: Uuid,
+    software: &[osfm_edm_common::protocol::SoftwareItem],
+    patches: &[osfm_edm_common::protocol::PatchItem],
+) -> Result<(), sqlx::Error> {
+    let mut tx = db.begin().await?;
+
+    sqlx::query("DELETE FROM installed_software WHERE device_id = $1")
+        .bind(device_id)
+        .execute(&mut *tx)
+        .await?;
+
+    for item in software {
+        sqlx::query(
+            "INSERT INTO installed_software (device_id, name, version, publisher, install_date) \
+             VALUES ($1, $2, $3, $4, $5)",
+        )
+        .bind(device_id)
+        .bind(&item.name)
+        .bind(item.version.as_deref())
+        .bind(item.publisher.as_deref())
+        .bind(item.install_date.as_deref())
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    for patch in patches {
+        // Coerce agent-provided strings into the CHECK-constrained domains.
+        let severity = match patch.severity.as_deref().map(|s| s.to_lowercase()).as_deref() {
+            Some("critical") => "critical",
+            Some("important") => "important",
+            Some("moderate") => "moderate",
+            Some("low") => "low",
+            _ => "unknown",
+        };
+        let status = match patch.status.as_str() {
+            "installed" => "installed",
+            "failed" => "failed",
+            // Agent reports "available" for pending updates.
+            _ => "pending",
+        };
+        sqlx::query(
+            "INSERT INTO patches (device_id, patch_id, title, severity, status) \
+             VALUES ($1, $2, $3, $4, $5) \
+             ON CONFLICT (device_id, patch_id) DO UPDATE \
+             SET title = EXCLUDED.title, severity = EXCLUDED.severity, status = EXCLUDED.status",
+        )
+        .bind(device_id)
+        .bind(&patch.patch_id)
+        .bind(patch.title.as_deref())
+        .bind(severity)
+        .bind(status)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await
 }

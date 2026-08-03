@@ -109,6 +109,14 @@ impl Config {
                 .unwrap_or_else(|_| "https://ntfy.sh".to_string()),
         })
     }
+
+    /// True when custom TLS material is configured. Used to decide whether the
+    /// `Secure` attribute belongs on cookies. (Serving TLS directly is
+    /// reserved for a future release — terminate TLS at a reverse proxy and
+    /// set both TLS_CERT_PATH/TLS_KEY_PATH to signal "external TLS".)
+    pub fn tls_enabled(&self) -> bool {
+        self.tls_cert_path.is_some() && self.tls_key_path.is_some()
+    }
 }
 
 /// Configuration loading errors.

@@ -15,7 +15,7 @@ use crate::state::AppState;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/compliance", get(fleet_compliance))
-        .route("/compliance/{device_id}", get(device_compliance))
+        .route("/compliance/:device_id", get(device_compliance))
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

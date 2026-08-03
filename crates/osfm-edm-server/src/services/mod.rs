@@ -5,3 +5,4 @@ pub mod job_queue;
 pub mod notifications;
 pub mod pki;
 pub mod policy_engine;
+pub mod signing;

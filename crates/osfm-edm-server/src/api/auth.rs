@@ -79,14 +79,46 @@ struct UserRow {
 
 // --- Handlers ---
 
+// ── Login rate limiting ──────────────────────────────────────────────────────
+/// Maximum failed login attempts per username within the sliding window.
+const MAX_LOGIN_ATTEMPTS: usize = 5;
+/// Sliding window duration for failed login attempts.
+const LOGIN_WINDOW: std::time::Duration = std::time::Duration::from_secs(5 * 60);
+
+/// Record a failed attempt and decide whether the username is now throttled.
+/// Returns true when the attempt should be rejected.
+fn record_failed_attempt(
+    map: &dashmap::DashMap<String, Vec<std::time::Instant>>,
+    username: &str,
+    now: std::time::Instant,
+) -> bool {
+    let key = username.to_lowercase();
+    let mut entry = map.entry(key).or_default();
+    entry.retain(|t| now.duration_since(*t) < LOGIN_WINDOW);
+    if entry.len() >= MAX_LOGIN_ATTEMPTS {
+        return true;
+    }
+    entry.push(now);
+    entry.len() > MAX_LOGIN_ATTEMPTS
+}
+
+/// Clear the throttle state after a successful login.
+fn clear_attempts(map: &dashmap::DashMap<String, Vec<std::time::Instant>>, username: &str) {
+    map.remove(&username.to_lowercase());
+}
+
 /// POST /api/v1/auth/login — authenticate with username/password, optionally TOTP.
 async fn login(
     State(state): State<Arc<AppState>>,
     Json(body): Json<LoginRequest>,
 ) -> ApiResult<impl IntoResponse> {
-    // Rate limiting check (in-memory, per-IP — simplified as per-user here since
-    // we don't have the IP readily in the handler without additional extraction).
-    // Full IP-based rate limiting is handled at the router level.
+    // In-memory per-username rate limiting (sliding window).
+    if record_failed_attempt(&state.login_attempts, &body.username, std::time::Instant::now()) {
+        return Err(ApiError::RateLimited(format!(
+            "Too many login attempts for '{}' — try again in a few minutes",
+            body.username
+        )));
+    }
 
     // Find user by username.
     let user: UserRow = sqlx::query_as(
@@ -134,6 +166,9 @@ async fn login(
         }
     }
 
+    // Credentials good — reset the throttle counter.
+    clear_attempts(&state.login_attempts, &body.username);
+
     // Generate access token (15 min expiry).
     let now = chrono::Utc::now().timestamp() as usize;
     let access_expiry = 15 * 60; // 15 minutes
@@ -171,9 +206,12 @@ async fn login(
         .execute(&state.db)
         .await?;
 
-    // Set refresh token as httpOnly cookie.
+    // Set refresh token as httpOnly cookie. `Secure` is set when TLS is
+    // configured — otherwise the cookie would be dropped by browsers over
+    // the plain-HTTP default deployment.
+    let secure = if state.config.tls_enabled() { "; Secure" } else { "" };
     let cookie = format!(
-        "refresh_token={refresh_token}; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age={}",
+        "refresh_token={refresh_token}; HttpOnly{secure}; SameSite=Strict; Path=/api/v1/auth; Max-Age={}",
         7 * 24 * 60 * 60
     );
 
@@ -296,7 +334,10 @@ async fn logout(
     }
 
     // Clear the cookie.
-    let clear_cookie = "refresh_token=; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=0";
+    let secure = if state.config.tls_enabled() { "; Secure" } else { "" };
+    let clear_cookie = format!(
+        "refresh_token=; HttpOnly{secure}; SameSite=Strict; Path=/api/v1/auth; Max-Age=0"
+    );
 
     Ok((
         StatusCode::OK,
@@ -466,4 +507,48 @@ pub async fn ensure_admin_user(state: &AppState) -> anyhow::Result<()> {
 
     tracing::info!(username, "Default admin user created");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn throttle_allows_then_blocks() {
+        let map = dashmap::DashMap::new();
+        let t0 = std::time::Instant::now();
+
+        // First MAX_LOGIN_ATTEMPTS failures are recorded, not blocked.
+        for i in 0..MAX_LOGIN_ATTEMPTS {
+            assert!(
+                !record_failed_attempt(&map, "admin", t0),
+                "attempt {} should not be throttled",
+                i + 1
+            );
+        }
+        // The next attempt exceeds the limit.
+        assert!(record_failed_attempt(&map, "admin", t0));
+
+        // A different username is unaffected.
+        assert!(!record_failed_attempt(&map, "alice", t0));
+
+        // Success clears the counter.
+        clear_attempts(&map, "ADMIN");
+        assert!(!record_failed_attempt(&map, "admin", t0));
+    }
+
+    #[test]
+    fn throttle_window_expires() {
+        let map = dashmap::DashMap::new();
+        let t0 = std::time::Instant::now();
+
+        for _ in 0..MAX_LOGIN_ATTEMPTS {
+            record_failed_attempt(&map, "admin", t0);
+        }
+        assert!(record_failed_attempt(&map, "admin", t0));
+
+        // After the window passes, old attempts no longer count.
+        let later = t0 + LOGIN_WINDOW + std::time::Duration::from_secs(1);
+        assert!(!record_failed_attempt(&map, "admin", later));
+    }
 }

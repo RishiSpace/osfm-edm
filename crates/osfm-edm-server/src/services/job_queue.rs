@@ -35,13 +35,15 @@ pub async fn dispatch_pending_jobs(state: &Arc<AppState>, device_id: Uuid) {
                 }
             };
 
+        let signature = state.sign_job(&job.id, &payload);
+
         let sent = state
             .send_to_agent(
                 &device_id,
                 ServerMessage::DispatchJob {
                     job_id: job.id,
                     payload,
-                    signature: String::new(),
+                    signature,
                 },
             )
             .await;

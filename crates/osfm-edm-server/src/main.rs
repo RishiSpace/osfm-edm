@@ -69,8 +69,20 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Initialize the job signer (load or generate Ed25519 key).
+    let job_signer = match services::signing::JobSigner::load_or_create(&data_dir) {
+        Ok(signer) => {
+            tracing::info!("Job signing initialized");
+            Some(signer)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to initialize job signing — agents will refuse dispatched jobs");
+            None
+        }
+    };
+
     // Build application state.
-    let state = AppState::new(db, config.clone(), ca);
+    let state = AppState::new(db, config.clone(), ca, job_signer);
 
     // Create default admin user on first boot.
     api::auth::ensure_admin_user(&state).await?;

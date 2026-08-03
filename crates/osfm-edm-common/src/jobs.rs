@@ -55,6 +55,24 @@ pub enum PackageManager {
     Pacman,
 }
 
+/// Domain separator prepended to job signing bytes so signatures cannot be
+/// replayed across contexts.
+const JOB_SIGN_DOMAIN: &[u8] = b"OSFM-EDM-JOB-SIGN-v1\0";
+
+/// Canonical byte representation that the server signs (Ed25519) and the agent
+/// verifies before executing a dispatched job.
+///
+/// Layout: `DOMAIN || job_id (16 raw bytes) || serde_json(payload)`.
+/// Deterministic because `JobPayload` contains no map types — struct field
+/// order is fixed by serde.
+pub fn canonical_job_signing_bytes(job_id: &uuid::Uuid, payload: &JobPayload) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(128);
+    bytes.extend_from_slice(JOB_SIGN_DOMAIN);
+    bytes.extend_from_slice(job_id.as_bytes());
+    bytes.extend_from_slice(&serde_json::to_vec(payload).unwrap_or_default());
+    bytes
+}
+
 /// Current execution status of a job.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

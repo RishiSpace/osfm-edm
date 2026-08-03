@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   db:
     image: timescale/timescaledb:latest-pg16
@@ -31,24 +29,29 @@ services:
       JWT_SECRET: change_me_to_a_long_random_string_at_least_64_chars
       SERVER_PORT: "8080"
       AGENT_PORT: "8443"
+      SERVER_URL: "https://localhost:8443"
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: change_me_immediately
     ports:
       - "8080:8080"
       - "8443:8443"
+    volumes:
+      - server_data:/app/data
 
-  dashboard:
-    build:
-      context: ./dashboard
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    depends_on:
-      - server
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
-      NEXT_PUBLIC_WS_URL: ws://localhost:8080
-    ports:
-      - "3000:3000"
+  # Dashboard (Next.js) — uncomment when the dashboard is built.
+  # dashboard:
+  #   build:
+  #     context: ./dashboard
+  #     dockerfile: Dockerfile
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - server
+  #   environment:
+  #     NEXT_PUBLIC_API_URL: http://localhost:8080
+  #     NEXT_PUBLIC_WS_URL: ws://localhost:8080
+  #   ports:
+  #     - "3000:3000"
 
 volumes:
   pgdata:
+  server_data:

@@ -19,6 +19,12 @@ struct EnrollData {
     key_pem: String,
     ca_pem: String,
     server_url: String,
+    /// Per-device WebSocket auth token (returned once by the server).
+    #[serde(default)]
+    device_token: String,
+    /// Base64 Ed25519 public key for job signature verification.
+    #[serde(default)]
+    server_signing_pubkey: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -82,6 +88,13 @@ pub async fn enroll(server_url: &str, token: &str) -> Result<AgentConfig, Enroll
     let key_path = AgentConfig::save_pem("device.key", &data.key_pem)?;
     let ca_path = AgentConfig::save_pem("ca.crt", &data.ca_pem)?;
 
+    if data.device_token.is_empty() {
+        tracing::warn!("Server returned no device token — agent will not be able to connect over WebSocket");
+    }
+    if data.server_signing_pubkey.is_empty() {
+        tracing::warn!("Server returned no signing public key — job signature verification will reject all jobs");
+    }
+
     // Build and save config.
     let config = AgentConfig {
         server_url: data.server_url,
@@ -94,6 +107,8 @@ pub async fn enroll(server_url: &str, token: &str) -> Result<AgentConfig, Enroll
         monitor_enabled: true,
         monitor_batch_interval: 5,
         monitor_paths: vec!["/".to_string()],
+        device_token: data.device_token,
+        server_pubkey: data.server_signing_pubkey,
     };
 
     config.save()?;

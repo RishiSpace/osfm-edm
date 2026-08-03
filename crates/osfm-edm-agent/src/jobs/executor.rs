@@ -26,14 +26,18 @@ pub async fn execute_job(
             execute_script(job_id, ShellType::Bash, cmd, None, outbound_tx).await;
         }
         JobPayload::PushFile { destination, content_b64, permissions } => {
-            // Decode base64 content and write to destination.
+            // Decode base64 content and write to destination. All interpolated
+            // values are single-quote escaped so a `'` in the path cannot
+            // break out of the quoting (command injection).
+            let dest = shell_quote(&destination);
+            let data = shell_quote(&content_b64);
             let cmd = if let Some(perms) = permissions {
+                let perms = shell_quote(&perms);
                 format!(
-                    "echo '{}' | base64 -d > '{}' && chmod {} '{}'",
-                    content_b64, destination, perms, destination
+                    "echo {data} | base64 -d > {dest} && chmod {perms} {dest}",
                 )
             } else {
-                format!("echo '{}' | base64 -d > '{}'", content_b64, destination)
+                format!("echo {data} | base64 -d > {dest}")
             };
             execute_script(job_id, ShellType::Bash, cmd, None, outbound_tx).await;
         }
@@ -52,6 +56,12 @@ pub async fn execute_job(
             execute_script(job_id, ShellType::Bash, cmd, None, outbound_tx).await;
         }
     }
+}
+
+/// Single-quote a value for safe interpolation into a POSIX shell command.
+/// A literal `'` becomes `'"'"'` (close quote, escaped quote, reopen quote).
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 /// Build a package manager command string.
@@ -183,4 +193,36 @@ async fn execute_script(
     let _ = outbound_tx
         .send(AgentMessage::JobCompleted { job_id, exit_code })
         .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shell_quote;
+
+    #[test]
+    fn shell_quote_plain_value() {
+        assert_eq!(shell_quote("/tmp/file.txt"), "'/tmp/file.txt'");
+    }
+
+    #[test]
+    fn shell_quote_escapes_single_quotes() {
+        // An attacker-controlled path containing a quote must not break out.
+        // Verified against bash: the quoted form evaluates back to the exact
+        // original string.
+        assert_eq!(
+            shell_quote("/tmp/x'; rm -rf /; echo '"),
+            r##"'/tmp/x'"'"'; rm -rf /; echo '"'"''"##
+        );
+    }
+
+    #[test]
+    fn shell_quote_empty() {
+        assert_eq!(shell_quote(""), "''");
+    }
+
+    #[test]
+    fn shell_quote_handles_spaces_and_dollars() {
+        // Spaces and $ are safely inert inside single quotes.
+        assert_eq!(shell_quote("/tmp/my dir/$(id)"), "'/tmp/my dir/$(id)'");
+    }
 }

@@ -9,7 +9,7 @@ osfm-edm-common = { path = "../osfm-edm-common" }
 # Web framework
 axum = { version = "0.7", features = ["ws", "macros"] }
 tokio = { version = "1", features = ["full"] }
-tower = "0.4"
+tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["cors", "trace", "limit"] }
 
 # Database
@@ -51,3 +51,11 @@ futures-util = "0.3"
 # Notifications
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "smtp-transport"] }
 reqwest = { version = "0.12", features = ["json"] }
+
+# Streaming
+tokio-stream = { version = "0.1", features = ["sync"] }
+
+# Job signing (Ed25519) + encoding
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+base64 = "0.22"

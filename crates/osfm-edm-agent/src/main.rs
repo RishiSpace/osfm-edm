@@ -135,13 +135,14 @@ async fn main() -> anyhow::Result<()> {
     // Main message handling loop — process server messages.
     tracing::info!("Agent running — press Ctrl+C to stop");
     let device_id = config.device_id;
+    let server_pubkey = config.server_pubkey.clone();
 
     loop {
         tokio::select! {
             msg = inbound_rx.recv() => {
                 match msg {
                     Some(server_msg) => {
-                        handle_server_message(device_id, server_msg, &outbound_tx, &mut shell_manager).await;
+                        handle_server_message(device_id, server_msg, &server_pubkey, &outbound_tx, &mut shell_manager).await;
                     }
                     None => {
                         tracing::error!("Inbound channel closed");
@@ -159,10 +160,50 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Verify the Ed25519 signature on a dispatched job using the server's public
+/// key obtained at enrollment. This is the agent's defense against a forged
+/// server (e.g. a network MITM): no valid signature, no execution.
+fn verify_job_signature(
+    server_pubkey_b64: &str,
+    job_id: &uuid::Uuid,
+    payload: &osfm_edm_common::jobs::JobPayload,
+    signature_b64: &str,
+) -> Result<(), String> {
+    use base64::Engine as _;
+    use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+    if server_pubkey_b64.is_empty() {
+        return Err("no server signing key configured — re-enroll the agent".to_string());
+    }
+    if signature_b64.is_empty() {
+        return Err("job has no signature".to_string());
+    }
+
+    let pk_bytes = base64::engine::general_purpose::STANDARD
+        .decode(server_pubkey_b64)
+        .map_err(|e| format!("invalid server pubkey encoding: {e}"))?;
+    let pk_array: [u8; 32] = pk_bytes
+        .try_into()
+        .map_err(|_| "server pubkey is not 32 bytes".to_string())?;
+    let vk = VerifyingKey::from_bytes(&pk_array)
+        .map_err(|e| format!("invalid server pubkey: {e}"))?;
+
+    let sig_bytes = base64::engine::general_purpose::STANDARD
+        .decode(signature_b64)
+        .map_err(|e| format!("invalid signature encoding: {e}"))?;
+    let sig = Signature::from_slice(&sig_bytes)
+        .map_err(|e| format!("invalid signature: {e}"))?;
+
+    let msg = osfm_edm_common::jobs::canonical_job_signing_bytes(job_id, payload);
+    vk.verify(&msg, &sig)
+        .map_err(|_| "signature verification failed".to_string())
+}
+
 /// Handle incoming server messages.
 async fn handle_server_message(
     device_id: uuid::Uuid,
     msg: osfm_edm_common::protocol::ServerMessage,
+    server_pubkey: &str,
     outbound_tx: &mpsc::Sender<AgentMessage>,
     shell_manager: &mut shell::session::ShellManager,
 ) {
@@ -186,8 +227,26 @@ async fn handle_server_message(
                 policy::engine::evaluate_policies(device_id, policies, &tx).await;
             });
         }
-        ServerMessage::DispatchJob { job_id, payload, .. } => {
-            tracing::info!(job_id = %job_id, "Received job dispatch — executing");
+        ServerMessage::DispatchJob { job_id, payload, signature } => {
+            // Verify the job signature before any execution.
+            if let Err(reason) = verify_job_signature(server_pubkey, &job_id, &payload, &signature) {
+                tracing::warn!(job_id = %job_id, reason, "Rejecting unsigned/invalidly-signed job");
+                let tx = outbound_tx.clone();
+                tokio::spawn(async move {
+                    let _ = tx
+                        .send(AgentMessage::JobLog {
+                            job_id,
+                            line: format!("Job rejected: {reason}"),
+                            stream: "stderr".to_string(),
+                        })
+                        .await;
+                    let _ = tx
+                        .send(AgentMessage::JobCompleted { job_id, exit_code: -3 })
+                        .await;
+                });
+                return;
+            }
+            tracing::info!(job_id = %job_id, "Received signed job dispatch — executing");
             let tx = outbound_tx.clone();
             tokio::spawn(async move {
                 jobs::executor::execute_job(job_id, payload, tx).await;

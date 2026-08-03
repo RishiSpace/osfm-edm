@@ -45,15 +45,22 @@ pub struct EnrollResponse {
     pub key_pem: String,
     pub ca_pem: String,
     pub server_url: String,
+    /// Per-device secret token used to authenticate WebSocket connections.
+    /// Returned once here; only its SHA-256 hash is stored server-side.
+    pub device_token: String,
+    /// Base64-encoded Ed25519 public key the agent uses to verify signed jobs.
+    pub server_signing_pubkey: String,
 }
 
 // --- Handlers ---
 
-/// POST /api/v1/enroll/token — generate a one-time enrollment token (auth required).
+/// POST /api/v1/enroll/token — generate a one-time enrollment token (admin only).
 async fn create_enrollment_token(
     State(state): State<Arc<AppState>>,
     auth: AuthUser,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     let token = Uuid::new_v4().to_string();
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(24);
 
@@ -113,6 +120,15 @@ async fn enroll_device(
         return Err(ApiError::BadRequest("Enrollment token has expired".to_string()));
     }
 
+    // Generate the per-device auth token (256-bit). Only the SHA-256 hash is
+    // stored; the plaintext token is returned once to the enrolling agent.
+    let device_token = format!(
+        "{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    );
+    let device_token_hash = hex_sha256(device_token.as_bytes());
+
     // Create the device record.
     #[derive(sqlx::FromRow)]
     struct DeviceRow {
@@ -120,12 +136,13 @@ async fn enroll_device(
     }
 
     let device: DeviceRow = sqlx::query_as(
-        "INSERT INTO devices (hostname, os, os_version, arch) VALUES ($1, $2, $3, $4) RETURNING id"
+        "INSERT INTO devices (hostname, os, os_version, arch, auth_token_hash) VALUES ($1, $2, $3, $4, $5) RETURNING id"
     )
     .bind(&body.hostname)
     .bind(&body.os)
     .bind(&body.os_version)
     .bind(&body.arch)
+    .bind(&device_token_hash)
     .fetch_one(&state.db)
     .await?;
 
@@ -161,6 +178,13 @@ async fn enroll_device(
     .execute(&state.db)
     .await?;
 
+    // The server signing pubkey lets the agent verify dispatched jobs.
+    let server_signing_pubkey = state
+        .job_signer
+        .as_ref()
+        .map(|s| s.public_key_b64().to_string())
+        .unwrap_or_default();
+
     tracing::info!(device_id = %device.id, hostname = %body.hostname, "Device enrolled");
 
     Ok((
@@ -172,8 +196,17 @@ async fn enroll_device(
                 key_pem,
                 ca_pem: ca.ca_cert_pem.clone(),
                 server_url: state.config.server_url.clone(),
+                device_token,
+                server_signing_pubkey,
             },
             "error": null,
         })),
     ))
+}
+
+/// Lowercase-hex SHA-256 of the given bytes. Used for device auth tokens —
+/// the DB stores only the hash, never the token itself.
+fn hex_sha256(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(bytes))
 }

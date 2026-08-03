@@ -22,6 +22,9 @@ pub enum ApiError {
     #[error("Conflict: {0}")]
     Conflict(String),
 
+    #[error("Rate limited: {0}")]
+    RateLimited(String),
+
     #[error("Internal server error: {0}")]
     Internal(String),
 
@@ -47,6 +50,7 @@ impl ApiError {
             ApiError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             ApiError::Forbidden(_) => StatusCode::FORBIDDEN,
             ApiError::Conflict(_) => StatusCode::CONFLICT,
+            ApiError::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
             ApiError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ApiError::Json(_) => StatusCode::BAD_REQUEST,
@@ -63,6 +67,7 @@ impl ApiError {
             ApiError::Unauthorized(_) => "UNAUTHORIZED",
             ApiError::Forbidden(_) => "FORBIDDEN",
             ApiError::Conflict(_) => "CONFLICT",
+            ApiError::RateLimited(_) => "RATE_LIMITED",
             ApiError::Internal(_) => "INTERNAL_ERROR",
             ApiError::Database(_) => "DATABASE_ERROR",
             ApiError::Json(_) => "INVALID_JSON",

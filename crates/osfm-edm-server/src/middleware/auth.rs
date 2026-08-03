@@ -35,6 +35,25 @@ pub struct AuthUser {
     pub role: String,
 }
 
+impl AuthUser {
+    /// True when the user holds the `admin` role.
+    pub fn is_admin(&self) -> bool {
+        self.role == "admin"
+    }
+
+    /// Require the `admin` role for privileged (state-changing) operations.
+    pub fn require_admin(&self) -> Result<(), ApiError> {
+        if self.is_admin() {
+            Ok(())
+        } else {
+            Err(ApiError::Forbidden(format!(
+                "User '{}' (role: {}) does not have admin privileges",
+                self.username, self.role
+            )))
+        }
+    }
+}
+
 #[axum::async_trait]
 impl<S> FromRequestParts<S> for AuthUser
 where

@@ -17,9 +17,9 @@ use crate::state::AppState;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_policies).post(create_policy))
-        .route("/{id}", get(get_policy).patch(update_policy).delete(delete_policy))
-        .route("/{id}/assign", post(assign_policy))
-        .route("/{id}/unassign", post(unassign_policy))
+        .route("/:id", get(get_policy).patch(update_policy).delete(delete_policy))
+        .route("/:id/assign", post(assign_policy))
+        .route("/:id/unassign", post(unassign_policy))
 }
 
 // --- Row types ---
@@ -64,9 +64,11 @@ pub struct AssignPolicyRequest {
 /// POST /api/v1/policies — create a new policy.
 async fn create_policy(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Json(body): Json<CreatePolicyRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     let policy: PolicyRow = sqlx::query_as(
         "INSERT INTO policies (name, description, rules) VALUES ($1, $2, $3) \
          RETURNING id, name, description, rules, version, enabled, created_at, updated_at",
@@ -117,10 +119,12 @@ async fn get_policy(
 /// PATCH /api/v1/policies/:id — update policy.
 async fn update_policy(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<Uuid>,
     Json(body): Json<UpdatePolicyRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    auth.require_admin()?;
+
     // Check exists.
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM policies WHERE id = $1)")
         .bind(id)
@@ -164,9 +168,11 @@ async fn update_policy(
 /// DELETE /api/v1/policies/:id — delete policy.
 async fn delete_policy(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     let result = sqlx::query("DELETE FROM policies WHERE id = $1")
         .bind(id)
         .execute(&state.db)
@@ -182,10 +188,12 @@ async fn delete_policy(
 /// POST /api/v1/policies/:id/assign — assign policy to a device or group.
 async fn assign_policy(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<Uuid>,
     Json(body): Json<AssignPolicyRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     sqlx::query(
         "INSERT INTO policy_assignments (policy_id, device_id, group_id) VALUES ($1, $2, $3) \
          ON CONFLICT DO NOTHING",
@@ -205,10 +213,12 @@ async fn assign_policy(
 /// POST /api/v1/policies/:id/unassign — remove policy assignment.
 async fn unassign_policy(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<Uuid>,
     Json(body): Json<AssignPolicyRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     sqlx::query(
         "DELETE FROM policy_assignments WHERE policy_id = $1 AND \
          (device_id = $2 OR group_id = $3)",

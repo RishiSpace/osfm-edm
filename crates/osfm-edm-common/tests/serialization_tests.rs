@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests {
     use osfm_edm_common::events::{FileOperation, SystemEvent, NetworkProtocol};
-    use osfm_edm_common::jobs::{JobPayload, JobStatus, ShellType};
+    use osfm_edm_common::jobs::{canonical_job_signing_bytes, JobPayload, JobStatus, ShellType};
     use osfm_edm_common::policy::{PolicyDefinition, PolicyRule, UpdatePolicy};
     use osfm_edm_common::protocol::{AgentMessage, ServerMessage, TelemetrySnapshot};
     use uuid::Uuid;
@@ -210,5 +210,27 @@ mod tests {
             }
             _ => panic!("Unexpected variant"),
         }
+    }
+
+    #[test]
+    fn canonical_job_signing_bytes_is_deterministic() {
+        let job_id = Uuid::new_v4();
+        let payload = JobPayload::RunScript {
+            shell: ShellType::Bash,
+            script: "echo hello".to_string(),
+        };
+        let a = canonical_job_signing_bytes(&job_id, &payload);
+        let b = canonical_job_signing_bytes(&job_id, &payload);
+        assert_eq!(a, b, "same input must produce identical bytes");
+        assert!(a.starts_with(b"OSFM-EDM-JOB-SIGN-v1\0"));
+
+        // Different job_id with same payload must produce different bytes.
+        let c = canonical_job_signing_bytes(&Uuid::new_v4(), &payload);
+        assert_ne!(a, c);
+
+        // Different payload with same job_id must produce different bytes.
+        let other = JobPayload::Reboot { delay_seconds: 60 };
+        let d = canonical_job_signing_bytes(&job_id, &other);
+        assert_ne!(a, d);
     }
 }

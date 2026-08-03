@@ -17,6 +17,8 @@ pub enum WsError {
     Serde(#[from] serde_json::Error),
     #[error("Connection closed")]
     ConnectionClosed,
+    #[error("Failed to build request: {0}")]
+    RequestBuild(String),
 }
 
 /// Run the WebSocket connection loop with exponential backoff reconnection.
@@ -31,17 +33,15 @@ pub async fn run_ws_loop(
     let max_backoff = 60u64;
 
     loop {
-        let ws_url = format!(
-            "{}/ws",
-            config
-                .server_url
-                .replace("https://", "wss://")
-                .replace("http://", "ws://")
-        );
+        let base = config
+            .server_url
+            .replace("https://", "wss://")
+            .replace("http://", "ws://");
+        let ws_url = format!("{}/ws?device_id={}", base, config.device_id);
 
         tracing::info!(url = %ws_url, "Connecting to server WebSocket");
 
-        match connect_and_run(&ws_url, outbound_rx, &inbound_tx).await {
+        match connect_and_run(&ws_url, &config.device_token, outbound_rx, &inbound_tx).await {
             Ok(()) => {
                 tracing::info!("WebSocket connection closed gracefully");
             }
@@ -59,12 +59,28 @@ pub async fn run_ws_loop(
 
 async fn connect_and_run(
     ws_url: &str,
+    device_token: &str,
     outbound_rx: &mut mpsc::Receiver<AgentMessage>,
     inbound_tx: &mpsc::Sender<ServerMessage>,
 ) -> Result<(), WsError> {
-    // Connect without mTLS for now (mTLS integration will be added when the
-    // server WebSocket hub is fully implemented in Phase 6).
-    let (ws_stream, _response) = tokio_tungstenite::connect_async(ws_url).await?;
+    // Build the upgrade request from the URL (auto-generates the WS handshake
+    // headers), then add the per-device auth token as a Bearer header.
+    // The server rejects connections without a valid token.
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    let mut request = ws_url
+        .into_client_request()
+        .map_err(WsError::Tungstenite)?;
+    request.headers_mut().insert(
+        "Authorization",
+        format!("Bearer {device_token}")
+            .parse()
+            .map_err(|_| WsError::RequestBuild("invalid token header value".to_string()))?,
+    );
+
+    // The per-device token authenticates this connection. The issued mTLS
+    // certificates are reserved for a future mutually-authenticated TLS
+    // transport (see DEVIATIONS.md).
+    let (ws_stream, _response) = tokio_tungstenite::connect_async(request).await?;
     tracing::info!("WebSocket connected");
 
     let (mut write, mut read) = ws_stream.split();

@@ -1,5 +1,6 @@
 //! API module — all REST API route handlers.
 
+pub mod alerts;
 pub mod auth;
 pub mod devices;
 pub mod enroll;
@@ -32,4 +33,6 @@ pub fn router() -> Router<Arc<AppState>> {
         .nest("/reports", reports::router())
         .nest("/settings", settings::router())
         .nest("/shell", shell::router())
+        .nest("/alerts", alerts::router())
 }
+

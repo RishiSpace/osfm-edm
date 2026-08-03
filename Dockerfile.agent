@@ -1,0 +1,46 @@
+# ── Stage 1: Build ───────────────────────────────────────────────────────────
+FROM rust:1.78-bookworm AS builder
+
+WORKDIR /build
+
+# Copy workspace manifests first for layer caching.
+COPY Cargo.toml Cargo.lock ./
+COPY crates/osfm-edm-common/Cargo.toml crates/osfm-edm-common/Cargo.toml
+COPY crates/osfm-edm-server/Cargo.toml crates/osfm-edm-server/Cargo.toml
+COPY crates/osfm-edm-agent/Cargo.toml  crates/osfm-edm-agent/Cargo.toml
+
+# Create dummy src files so cargo can resolve the workspace.
+RUN mkdir -p crates/osfm-edm-common/src && echo "// placeholder" > crates/osfm-edm-common/src/lib.rs \
+ && mkdir -p crates/osfm-edm-server/src && echo "fn main() {}" > crates/osfm-edm-server/src/main.rs \
+ && mkdir -p crates/osfm-edm-agent/src  && echo "fn main() {}" > crates/osfm-edm-agent/src/main.rs
+
+# Pre-build dependencies (cached unless Cargo.toml/Cargo.lock change).
+RUN cargo build --release -p osfm-edm-agent 2>/dev/null || true
+
+# Copy real source code and rebuild.
+COPY crates/ crates/
+
+# Touch source files so cargo knows they changed.
+RUN touch crates/osfm-edm-common/src/lib.rs crates/osfm-edm-agent/src/main.rs
+
+RUN cargo build --release -p osfm-edm-agent
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates libssl3 \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /bin/bash osfm
+
+WORKDIR /app
+
+COPY --from=builder /build/target/release/osfm-edm-agent /app/osfm-edm-agent
+
+# Config directory.
+RUN mkdir -p /home/osfm/.osfm-edm && chown -R osfm:osfm /home/osfm/.osfm-edm
+
+USER osfm
+
+ENTRYPOINT ["/app/osfm-edm-agent"]

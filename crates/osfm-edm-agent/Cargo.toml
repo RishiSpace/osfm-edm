@@ -47,6 +47,10 @@ chrono = { version = "0.4", features = ["serde"] }
 # System
 hostname = "0.4"
 
+# Job signature verification (Ed25519) + encoding
+ed25519-dalek = "2"
+base64 = "0.22"
+
 # Platform-specific system monitoring (Linux: netlink, fanotify)
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

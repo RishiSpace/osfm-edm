@@ -17,10 +17,10 @@ use crate::state::AppState;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_devices))
-        .route("/{id}", get(get_device))
-        .route("/{id}", patch(update_device))
-        .route("/{id}", delete(delete_device))
-        .route("/{id}/telemetry", get(get_telemetry))
+        .route("/:id", get(get_device))
+        .route("/:id", patch(update_device))
+        .route("/:id", delete(delete_device))
+        .route("/:id/telemetry", get(get_telemetry))
 }
 
 // --- Row types ---
@@ -106,10 +106,12 @@ async fn get_device(
 /// PATCH /api/v1/devices/:id — update device hostname.
 async fn update_device(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateDeviceRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    auth.require_admin()?;
+
     // Verify device exists.
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE id = $1)")
         .bind(id)
@@ -145,9 +147,11 @@ async fn update_device(
 /// DELETE /api/v1/devices/:id — revoke device certificate (soft delete).
 async fn delete_device(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM devices WHERE id = $1)")
         .bind(id)
         .fetch_one(&state.db)

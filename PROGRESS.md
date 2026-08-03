@@ -129,3 +129,66 @@ Renamed across all crates:
 
 Agent config additions: `monitor_enabled`, `monitor_batch_interval`, `monitor_paths`
 - Full workspace `cargo build` passes, `cargo test` passes (9/9 tests)
+
+---
+
+## Phase 12 — Integration Fixes, Alerts API & Shell Relay — COMPLETE (2026-06-21)
+
+Fixed critical integration bugs that prevented end-to-end operation:
+
+### Bug Fixes
+- Agent WebSocket connection: added `?device_id=<uuid>` query param to WS URL (server required it, agent never sent it)
+- Schema mismatch: `kernel_events.payload` — added migration 012 to add the `payload JSONB` column the server code expects
+- Schema mismatch: `alert_rules` / `alert_events` — added migration 013 to add `metric`, `operator`, `threshold`, `severity`, `message`, `triggered_at` columns
+- Schema mismatch: `jobs` status CHECK — added migration 014 to include `dispatched` and `completed` status values
+- Fixed `agent_hub.rs` JobLog handler: was writing to nonexistent `log_output` JSONB column; now correctly INSERTs into `job_logs` table
+- Fixed `agent_hub.rs` JobCompleted: `completed_at` → `finished_at` to match actual schema
+
+### New Features
+- **Alert Rules CRUD API** (`api/alerts.rs`): Full CRUD for alert rules + event listing with filters + event resolution endpoint
+- **Shell Output SSE Relay**: Shell output from agents now broadcasts via `tokio::sync::broadcast` to SSE subscribers at `GET /api/v1/shell/:session_id/stream`
+- **Policy Enforcer Integration**: Linux enforcers (firewall, USB, screen lock, auto-updates, process blacklist) now invoked automatically on non-compliant policy evaluation
+- **USB Storage Compliance Check**: Added `lsmod` check for `usb_storage` module in policy engine
+- **Process Kill Enforcement**: Blacklisted processes are now killed on policy evaluation (Linux)
+
+### Deployment
+- Created `Dockerfile.server` and `Dockerfile.agent` (multi-stage builds, non-root user)
+- Fixed `docker-compose.yml`: removed nonexistent dashboard service, added `server_data` volume, removed deprecated `version` field
+- Updated `.env.example` with organized sections and documentation
+
+Full workspace `cargo build` passes, `cargo test` passes (11/11 tests), `cargo clippy` passes
+
+---
+
+## Phase 13 — Security Hardening & Schema Reconciliation — COMPLETE (2026-08-03)
+
+End-to-end smoke-tested against a live PostgreSQL (enroll → WS connect → signed job → shell session → RBAC negative tests).
+
+### Schema reconciliation (migration 015)
+- `jobs`: added `created_by`, `log_output`; `job_type` now nullable — the jobs API previously failed on fresh databases
+- `policies`: added `version`, `enabled` — policy create/list previously failed
+- `groups` → `device_groups` and `software_inventory` → `installed_software` renames (code used these names consistently)
+- `policy_assignments` reshaped from `(target_type, target_id)` → `(device_id, group_id)` with data migration + partial unique indexes — assignment API previously failed
+- `devices.auth_token_hash` added for WebSocket agent authentication
+
+### Route syntax fix (critical)
+- All path parameters converted `{x}` → `:x`. **axum 0.7 (matchit 0.7) only supports colon syntax** — brace syntax is axum 0.8+. Every parameterized endpoint was silently returning 404 (braces are treated as literal path characters, no panic).
+
+### Security hardening
+- **Shell API**: authentication required (was completely unauthenticated); sessions now bound to the opening user — only owner or admin can send input, stream output, or close
+- **Agent WS auth**: per-device 256-bit token issued at enrollment, sent as `Authorization: Bearer` header; server stores SHA-256 hash only. Bare `device_id` is no longer an identity
+- **Ed25519 job signing**: server signs every `DispatchJob` (`services/signing.rs`, key at `data/job_signing.key`); agent verifies with the public key obtained at enrollment and rejects tampered/unsigned jobs (exit code -3). A network MITM can no longer achieve RCE via forged dispatches
+- **RBAC**: `require_admin()` on all write endpoints (policies, groups, jobs, alerts, devices, enroll-token, shell); `viewer` role is read-only
+- **Login rate limiting**: 5 failures / 5 min per username → HTTP 429 (in-memory sliding window)
+- `Secure` cookie attribute now conditional on TLS configuration — refresh flow works on plain-HTTP dev deployments
+- File permissions: server CA key, job signing key, agent config + device certs/keys all written 0600 (config dir 0700)
+- `PushFile` job payload is shell-quoted (closes quote-escape injection)
+- Inventory replace is transactional; agent patch data is now actually persisted (patches API reads the real `patches` table); system event batches capped at 1000/batch
+
+### Tests
+- +8 unit tests: canonical signing bytes determinism, sign/verify round-trip incl. tamper rejection + key persistence, rate limiter window behavior, shell quoting (verified against bash). **19/19 passing.**
+
+### Known limitations (next phases)
+- Transport is still plaintext HTTP/WS. Next: terminate TLS (reverse proxy or built-in rustls), then pin server identity in the agent
+- Only jobs are signed; `PushPolicy`/shell messages are not individually authenticated (TLS or per-message signing closes this)
+- Devices enrolled before Phase 13 have no auth token — re-enroll them

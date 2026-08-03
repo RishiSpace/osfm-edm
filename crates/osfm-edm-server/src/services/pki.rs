@@ -65,6 +65,7 @@ impl CertificateAuthority {
 
         std::fs::write(&cert_path, &ca_cert_pem)?;
         std::fs::write(&key_path, &ca_key_pem)?;
+        restrict_key_permissions(&key_path);
         tracing::info!("CA certificate written to {}", cert_path.display());
 
         Ok(Self {
@@ -110,4 +111,16 @@ impl CertificateAuthority {
         let hash = Sha256::digest(cert_pem.as_bytes());
         format!("{:x}", hash)
     }
+}
+
+/// Restrict private key material to owner-read/write (0600) on Unix.
+fn restrict_key_permissions(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+            tracing::warn!(error = %e, path = %path.display(), "Failed to restrict key permissions");
+        }
+    }
+    let _ = path;
 }

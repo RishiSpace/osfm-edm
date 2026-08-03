@@ -17,9 +17,9 @@ use crate::state::AppState;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_groups).post(create_group))
-        .route("/{id}", get(get_group).delete(delete_group))
-        .route("/{id}/members", get(list_members).post(add_member))
-        .route("/{id}/members/{device_id}", delete(remove_member))
+        .route("/:id", get(get_group).delete(delete_group))
+        .route("/:id/members", get(list_members).post(add_member))
+        .route("/:id/members/:device_id", delete(remove_member))
 }
 
 // --- Row types ---
@@ -58,9 +58,11 @@ pub struct AddMemberRequest {
 /// POST /api/v1/groups — create a new group.
 async fn create_group(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Json(body): Json<CreateGroupRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     let group: GroupRow = sqlx::query_as(
         "INSERT INTO device_groups (name, description) VALUES ($1, $2) \
          RETURNING id, name, description, created_at",
@@ -107,9 +109,11 @@ async fn get_group(
 /// DELETE /api/v1/groups/:id — delete a group.
 async fn delete_group(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     let result = sqlx::query("DELETE FROM device_groups WHERE id = $1")
         .bind(id)
         .execute(&state.db)
@@ -143,10 +147,12 @@ async fn list_members(
 /// POST /api/v1/groups/:id/members — add a device to a group.
 async fn add_member(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path(id): Path<Uuid>,
     Json(body): Json<AddMemberRequest>,
 ) -> ApiResult<impl IntoResponse> {
+    auth.require_admin()?;
+
     sqlx::query(
         "INSERT INTO group_members (group_id, device_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
     )
@@ -161,9 +167,11 @@ async fn add_member(
 /// DELETE /api/v1/groups/:id/members/:device_id — remove a device from a group.
 async fn remove_member(
     State(state): State<Arc<AppState>>,
-    _auth: AuthUser,
+    auth: AuthUser,
     Path((id, device_id)): Path<(Uuid, Uuid)>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    auth.require_admin()?;
+
     sqlx::query("DELETE FROM group_members WHERE group_id = $1 AND device_id = $2")
         .bind(id)
         .bind(device_id)

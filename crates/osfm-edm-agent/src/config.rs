@@ -32,6 +32,14 @@ pub struct AgentConfig {
     /// Paths to monitor for file events (fanotify mount points on Linux).
     #[serde(default = "default_monitor_paths")]
     pub monitor_paths: Vec<String>,
+    /// Per-device secret token used to authenticate the WebSocket connection.
+    /// Issued at enrollment; empty for configs written before token auth.
+    #[serde(default)]
+    pub device_token: String,
+    /// Base64-encoded Ed25519 public key of the server, used to verify job
+    /// signatures before executing anything. Empty for pre-signing configs.
+    #[serde(default)]
+    pub server_pubkey: String,
 }
 
 fn default_heartbeat_interval() -> u64 {
@@ -78,28 +86,55 @@ impl AgentConfig {
         Ok(config)
     }
 
-    /// Save configuration to disk.
+    /// Save configuration to disk. The config contains the device token, so
+    /// it is written with owner-only permissions.
     pub fn save(&self) -> Result<(), ConfigError> {
         let dir = Self::config_dir();
         std::fs::create_dir_all(&dir)
             .map_err(|e| ConfigError::Io(e.to_string()))?;
+        set_dir_permissions(&dir);
         let content = toml::to_string_pretty(self)
             .map_err(|e| ConfigError::Parse(e.to_string()))?;
-        std::fs::write(Self::config_path(), content)
+        let path = Self::config_path();
+        std::fs::write(&path, content)
             .map_err(|e| ConfigError::Io(e.to_string()))?;
+        set_secret_permissions(&path);
         Ok(())
     }
 
-    /// Save a PEM file to the config directory.
+    /// Save a PEM file to the config directory with owner-only permissions
+    /// (covers both private keys and certificates).
     pub fn save_pem(filename: &str, content: &str) -> Result<PathBuf, ConfigError> {
         let dir = Self::config_dir();
         std::fs::create_dir_all(&dir)
             .map_err(|e| ConfigError::Io(e.to_string()))?;
+        set_dir_permissions(&dir);
         let path = dir.join(filename);
         std::fs::write(&path, content)
             .map_err(|e| ConfigError::Io(e.to_string()))?;
+        set_secret_permissions(&path);
         Ok(path)
     }
+}
+
+/// 0700 on the config directory (Unix only).
+fn set_dir_permissions(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+    }
+    let _ = path;
+}
+
+/// 0600 on secret files (Unix only).
+fn set_secret_permissions(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+    }
+    let _ = path;
 }
 
 fn dirs_or_default() -> PathBuf {

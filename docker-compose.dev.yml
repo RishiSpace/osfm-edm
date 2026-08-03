@@ -1,5 +1,3 @@
-version: "3.8"
-
 # Development override — runs only the database, server and dashboard run locally.
 services:
   db:
