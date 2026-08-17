@@ -1,0 +1,9 @@
+target
+.git
+dashboard/node_modules
+dashboard/.next
+data
+pgdata
+**/.env
+**/*.md
+!README.md

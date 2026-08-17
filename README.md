@@ -22,7 +22,7 @@ cd osfm-edm
 cp .env.example .env  # Edit with your values
 docker-compose up -d
 
-# Navigate to http://localhost:8080 and log in with your admin credentials
+# Open http://localhost:3000 and log in with the admin credentials from .env
 ```
 
 ## Enrolling a Device
@@ -55,8 +55,9 @@ irm https://your-server:8080/enroll.ps1 | iex -Args "--token <enrollment-token>"
 # Backend
 cargo build
 
-# Dashboard
+# Dashboard (API must already be running)
 cd dashboard && npm install && npm run dev
+# → http://localhost:3000
 ```
 
 ## Architecture
@@ -93,10 +94,10 @@ cd dashboard && npm install && npm run dev
 - [x] **Agent** — Enrollment, heartbeat, telemetry, job execution, policy checks, inventory collection
 - [x] **Linux System Monitor** — User-space process (netlink proc connector), file (fanotify), and network (/proc/net/tcp) event tracking
 - [x] **Linux Platform Enforcers** — Firewall (ufw), USB storage (sysfs/modprobe), screen lock (gsettings/xset), auto-updates (apt)
+- [x] **Dashboard UI** — Next.js 14 console: overview, devices, telemetry charts, jobs, policies, groups, alerts, reports, settings, remote shell
 
 ### 🚧 Pending
 
-- [ ] **Dashboard UI** — Next.js 14 web frontend with device overview, live telemetry charts, job console, policy editor
 - [ ] **Windows System Monitor** — ETW-based process, file, network, and registry event collection
 - [ ] **macOS System Monitor** — Endpoint Security framework for process, file, and network events
 - [ ] **Platform Enforcers (Windows/macOS)** — OS-level policy enforcement via netsh, powercfg, pfctl, pmset
@@ -104,11 +105,11 @@ cd dashboard && npm install && npm run dev
 
 ## Current Implementation Status
 
-**Snapshot**: June 2026
+**Snapshot**: August 2026
 
-**Overall progress: ~55%** toward the full project goal (usable self-hosted platform with working dashboard, reliable alerts, active policy enforcement, and easy deployment).
+**Overall progress: ~70%** toward the full project goal (usable self-hosted platform with working dashboard, reliable alerts, active policy enforcement, and easy deployment).
 
-The project has delivered most of the Rust backend and Linux agent code. Phase 12 fixed critical integration bugs that previously prevented end-to-end operation. The main missing piece is the web dashboard.
+The project has a working Rust backend, Linux agent, and a Next.js 14 console. Remaining work is TLS, Windows/macOS agents, and CI.
 
 ### Component Status
 
@@ -121,14 +122,13 @@ The project has delivered most of the Rust backend and Linux agent code. Phase 1
 | Linux System Monitor               | Implemented       | 80%     | User-space using netlink proc connector + fanotify + /proc/net. Schema mismatch fixed (migration 012). |
 | Policy System                      | Functional        | 80%     | Full CRUD + assignment + WS push + compliance reporting. Linux enforcers (ufw, USB, screen lock, auto-updates, process kill) now **invoked automatically**. |
 | Alerts & Notifications             | Functional        | 70%     | Alert engine evaluates rules. CRUD API for rules. Schema mismatches fixed (migration 013). SMTP/webhook/ntfy.sh notification code functional. |
-| Dashboard / Web UI                 | Not started       | 0%      | No `dashboard/` directory. This is the largest remaining item. |
+| Dashboard / Web UI                 | Functional        | 80%     | Next.js 14 console at `:3000`. Login, fleet overview, devices + charts, jobs + logs, policies, groups, alerts, reports, settings, piped shell. |
 | Cross-platform (Windows / macOS)   | Stubs             | 10%     | System monitor and enforcer modules contain only "not yet implemented" placeholders. |
-| Deployment (Docker, Compose, CI)   | Functional        | 60%     | Multi-stage Dockerfiles for server and agent. `docker compose up` starts DB + server. No CI pipeline yet. |
+| Deployment (Docker, Compose, CI)   | Functional        | 70%     | Multi-stage Dockerfiles for server, agent, and dashboard. `docker compose up` starts DB + server + UI. No CI pipeline yet. |
 
 ### Known Issues
 - Transport is plaintext HTTP/WS — terminate TLS at a reverse proxy before exposing it (built-in TLS planned). Agents are authenticated with per-device tokens and jobs are Ed25519-signed (see DEVIATIONS.md).
 - Shell sessions use piped I/O, not a real PTY — no terminal escape sequence support.
-- No web UI exists for any of the data.
 - No CI/CD pipeline.
 - Devices enrolled before Phase 13 lack an auth token and must be re-enrolled.
 

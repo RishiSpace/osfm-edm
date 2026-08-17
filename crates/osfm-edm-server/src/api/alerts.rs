@@ -276,11 +276,11 @@ async fn list_events(
     let mut bind_index = 1u32;
 
     if params.device_id.is_some() {
-        conditions.push(format!("ae.device_id = $:bind_index"));
+        conditions.push(format!("ae.device_id = ${bind_index}"));
         bind_index += 1;
     }
     if params.severity.is_some() {
-        conditions.push(format!("ae.severity = $:bind_index"));
+        conditions.push(format!("ae.severity = ${bind_index}"));
         bind_index += 1;
     }
     if params.unresolved.unwrap_or(false) {

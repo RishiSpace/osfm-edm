@@ -192,3 +192,57 @@ End-to-end smoke-tested against a live PostgreSQL (enroll → WS connect → sig
 - Transport is still plaintext HTTP/WS. Next: terminate TLS (reverse proxy or built-in rustls), then pin server identity in the agent
 - Only jobs are signed; `PushPolicy`/shell messages are not individually authenticated (TLS or per-message signing closes this)
 - Devices enrolled before Phase 13 have no auth token — re-enroll them
+
+---
+
+## Phase 14 — Dashboard UI — COMPLETE (2026-08-17)
+
+The product is unusable without a web UI. Phase 13 closed the security/schema blockers; this phase adds the Next.js 14 dashboard specified in the README.
+
+### Decision / Rationale / Consequence
+
+1. **Phase identity** — Phase 13 is complete. This is Phase 14 (Dashboard), not TLS or Windows. Rationale: README lists Dashboard first among pending items; it is 0% and the reason the project exists. Consequence: TLS and cross-platform stay later phases.
+2. **Next.js 14 App Router + Tailwind** — matches the published stack. Not Vite (other OSFM apps) so the documented `cd dashboard && npm run dev` path is true.
+3. **No full shadcn dump** — custom lean primitives (button/input/card/badge/modal). Rationale: osfm-site pulled 40+ unused Radix packages. Consequence: fewer deps, same look.
+4. **OSFM visual language** — pitch black + `#15DAE3` from osfm-site / osfm-creds-ui so the dashboard belongs in the suite.
+5. **Browser talks to the API directly** (CORS + credentials). Access JWT lives in memory; refresh uses the existing httpOnly cookie. Rationale: the API already implements this; a Next BFF would duplicate auth. Consequence: CORS origin must be the dashboard URL, not `NEXT_PUBLIC_API_URL`.
+6. **Backend fixes shipped with the UI** (they unblock pages, they are not a new product phase):
+   - `CORS_ORIGIN` (default `http://localhost:3000`)
+   - `GET /jobs/:id` includes `job_logs`
+   - Alert event list SQL placeholders
+   - `POST /devices/:id/request-{inventory,telemetry}`
+   - Request inventory automatically on agent connect
+7. **SSE shell** — `fetch` + `ReadableStream` (EventSource cannot send `Authorization`).
+8. **Policy editor** — structured common rules + raw JSON for anything else. A visual rule builder is out of scope.
+
+### Stages
+
+| # | Goal | Success |
+|---|---|---|
+| 1 | Backend blockers | cargo test 19/19; filtered alerts + job logs work |
+| 2 | Scaffold `dashboard/` | `npm run build` succeeds |
+| 3 | Auth + chrome | login / refresh / logout / RBAC-aware nav |
+| 4 | Pages | overview, devices, jobs, policies, groups, alerts, reports, settings, shell |
+| 5 | Deploy/docs | compose + README + this file |
+| 6 | Validate | next build + cargo test + live smoke |
+
+### Built
+
+- `dashboard/` Next.js 14.2 App Router: login, overview, devices + 24h charts, jobs + live logs, policies, groups, alerts, reports, inventory, settings (enroll token + TOTP), remote shell (fetch SSE).
+- Access token in memory; session restore via `/auth/refresh` cookie; write actions hidden for `viewer`.
+- Server: `CORS_ORIGIN` (default `http://localhost:3000`); job detail includes `job_logs`; alert event filters use `$1`-style binds; `POST /devices/:id/request-{inventory,telemetry}`; inventory pull on agent connect.
+- `Dockerfile.dashboard` + compose service on `:3000`.
+
+### Validation
+
+- `cargo test --workspace --offline` — 19/19 pass
+- `cd dashboard && npm run build` — compile + lint + types, 14 routes
+- `next start :3000` — `/login` HTML contains OSFM-EDM + Sign in; `/devices|/jobs|/policies|/alerts|/settings|/reports|/groups|/software` → 200; unknown path → 404
+- Live login against Postgres was **not** run (no DB on this host). Click-through of charts/jobs/shell still needs a running API.
+
+### Still later
+
+- TLS / server identity pin (Phase 13 leftover)
+- Windows/macOS monitors
+- CI
+- Real PTY shell; job cancel on the agent

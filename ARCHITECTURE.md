@@ -48,7 +48,7 @@ The platform has **four main components**:
 | `osfm-edm-common` | Rust (lib) | Shared types and protocol definitions |
 | `osfm-edm-server` | Rust (bin) | Axum REST API + WebSocket hub |
 | `osfm-edm-agent` | Rust (bin) | Per-device agent daemon |
-| Dashboard | Next.js (planned) | Web UI for device management |
+| Dashboard | Next.js 14 | Web UI for device management (`dashboard/`) |
 
 ---
 
@@ -336,7 +336,8 @@ All server configuration is via **environment variables** (see `.env.example`):
 | `ADMIN_PASSWORD` | | `admin` | First-boot admin password |
 | `TLS_CERT_PATH` | | — | Custom TLS cert (optional) |
 | `TLS_KEY_PATH` | | — | Custom TLS key (optional) |
-| `NEXT_PUBLIC_API_URL` | | `http://localhost:8080` | CORS origin for dashboard |
+| `CORS_ORIGIN` | | `http://localhost:3000` | Browser origin allowed by CORS (the dashboard) |
+| `NEXT_PUBLIC_API_URL` | | `http://localhost:8080` | API URL baked into the dashboard JS bundle |
 
 ---
 

@@ -21,3 +21,7 @@ The server binds plain HTTP/WS on `SERVER_PORT`. `TLS_CERT_PATH`/`TLS_KEY_PATH` 
 ## 3. Route parameter syntax — axum 0.7 (`:id`), not axum 0.8 (`{id}`) (2026-08-03)
 
 Path parameters are written `:param`. The `{param}` brace syntax requires **axum 0.8+** (matchit 0.8); brace literals in axum 0.7 are treated as literal path characters and silently produce 404s. If the workspace upgrades to axum 0.8, all route literals must be migrated to `{param}` and validated (**axum 0.8 rejects colon-style params**).
+
+## 4. CORS origin is `CORS_ORIGIN`, not `NEXT_PUBLIC_API_URL` (2026-08-17)
+
+The dashboard is a separate origin (`http://localhost:3000`). `NEXT_PUBLIC_API_URL` is the API address the browser calls. Using it as `Access-Control-Allow-Origin` made every real UI request fail CORS. Set `CORS_ORIGIN` to the dashboard origin.

@@ -165,7 +165,26 @@ async fn get_job(
     .await?
     .ok_or_else(|| ApiError::NotFound(format!("Job {id} not found")))?;
 
-    Ok(Json(serde_json::json!({ "data": job, "error": null })))
+    #[derive(Debug, Serialize, sqlx::FromRow)]
+    struct JobLogRow {
+        time: Option<chrono::DateTime<chrono::Utc>>,
+        line: String,
+        stream: String,
+    }
+
+    let logs: Vec<JobLogRow> = sqlx::query_as(
+        "SELECT time, line, stream FROM job_logs WHERE job_id = $1 ORDER BY time ASC LIMIT 5000",
+    )
+    .bind(id)
+    .fetch_all(&state.db)
+    .await?;
+
+    let mut data = serde_json::to_value(&job)?;
+    if let Some(obj) = data.as_object_mut() {
+        obj.insert("logs".to_string(), serde_json::to_value(logs)?);
+    }
+
+    Ok(Json(serde_json::json!({ "data": data, "error": null })))
 }
 
 /// POST /api/v1/jobs/:id/cancel — cancel/revoke a running job.

@@ -130,6 +130,9 @@ async fn handle_agent_connection(socket: WebSocket, state: Arc<AppState>, device
         tokio::spawn(async move {
             crate::services::job_queue::dispatch_pending_jobs(&s, did).await;
             crate::services::policy_engine::push_policies_to_device(&s, did).await;
+            let _ = s
+                .send_to_agent(&did, ServerMessage::RequestInventory)
+                .await;
         });
     }
 

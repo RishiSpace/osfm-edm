@@ -23,7 +23,7 @@ pub struct Config {
     pub tls_cert_path: Option<String>,
     /// Optional TLS private key path for the API server.
     pub tls_key_path: Option<String>,
-    /// Allowed CORS origin for the dashboard.
+    /// Allowed CORS origin for the dashboard (browser origin, not the API URL).
     pub dashboard_origin: String,
     // ── Notification channels ──
     /// SMTP server hostname (optional — enables email notifications).
@@ -80,8 +80,14 @@ impl Config {
         let tls_cert_path = env::var("TLS_CERT_PATH").ok().filter(|s| !s.is_empty());
         let tls_key_path = env::var("TLS_KEY_PATH").ok().filter(|s| !s.is_empty());
 
-        let dashboard_origin = env::var("NEXT_PUBLIC_API_URL")
-            .unwrap_or_else(|_| format!("http://localhost:{server_port}"));
+        // Browser origin of the dashboard. NEXT_PUBLIC_API_URL is the API address
+        // the JS client calls — using it as Access-Control-Allow-Origin rejects
+        // every real UI request (dashboard is :3000, API is :8080).
+        let dashboard_origin = env::var("CORS_ORIGIN")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| env::var("NEXT_PUBLIC_DASHBOARD_URL").ok().filter(|s| !s.is_empty()))
+            .unwrap_or_else(|| "http://localhost:3000".to_string());
 
         Ok(Config {
             database_url,

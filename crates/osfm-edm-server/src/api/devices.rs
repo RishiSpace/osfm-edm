@@ -3,7 +3,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{delete, get, patch};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -21,6 +21,8 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/:id", patch(update_device))
         .route("/:id", delete(delete_device))
         .route("/:id/telemetry", get(get_telemetry))
+        .route("/:id/request-inventory", post(request_inventory))
+        .route("/:id/request-telemetry", post(request_telemetry))
 }
 
 // --- Row types ---
@@ -209,6 +211,55 @@ async fn get_telemetry(
 
     Ok(Json(serde_json::json!({
         "data": metrics,
+        "error": null,
+    })))
+}
+
+/// POST /api/v1/devices/:id/request-inventory — ask a connected agent for software/patches.
+async fn request_inventory(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    auth.require_admin()?;
+    push_to_agent(
+        &state,
+        id,
+        osfm_edm_common::protocol::ServerMessage::RequestInventory,
+        "Inventory request sent",
+    )
+    .await
+}
+
+/// POST /api/v1/devices/:id/request-telemetry — ask a connected agent for a snapshot now.
+async fn request_telemetry(
+    State(state): State<Arc<AppState>>,
+    auth: AuthUser,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<serde_json::Value>> {
+    auth.require_admin()?;
+    push_to_agent(
+        &state,
+        id,
+        osfm_edm_common::protocol::ServerMessage::RequestTelemetry,
+        "Telemetry request sent",
+    )
+    .await
+}
+
+async fn push_to_agent(
+    state: &AppState,
+    device_id: Uuid,
+    msg: osfm_edm_common::protocol::ServerMessage,
+    ok: &str,
+) -> ApiResult<Json<serde_json::Value>> {
+    if !state.send_to_agent(&device_id, msg).await {
+        return Err(ApiError::NotFound(format!(
+            "Device {device_id} is not connected"
+        )));
+    }
+    Ok(Json(serde_json::json!({
+        "data": { "message": ok },
         "error": null,
     })))
 }
