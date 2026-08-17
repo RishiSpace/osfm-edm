@@ -163,19 +163,22 @@ async fn delete_device(
         return Err(ApiError::NotFound(format!("Device {id} not found")));
     }
 
-    // Revoke the device's certificate rather than deleting data.
     sqlx::query("UPDATE certificates SET revoked = true, revoked_at = now() WHERE device_id = $1")
         .bind(id)
         .execute(&state.db)
         .await?;
 
-    // Mark device as offline.
-    sqlx::query("UPDATE devices SET status = 'offline' WHERE id = $1")
-        .bind(id)
-        .execute(&state.db)
-        .await?;
+    // Drop the WS credential so the agent cannot reconnect.
+    sqlx::query(
+        "UPDATE devices SET status = 'offline', auth_token_hash = NULL WHERE id = $1",
+    )
+    .bind(id)
+    .execute(&state.db)
+    .await?;
 
-    tracing::info!(device_id = %id, "Device certificate revoked");
+    state.disconnect_agent(&id);
+
+    tracing::info!(device_id = %id, "Device revoked (cert + auth token)");
 
     Ok((
         StatusCode::OK,

@@ -11,7 +11,6 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 use crate::middleware::auth::AuthUser;
-use crate::services::pki::CertificateAuthority;
 use crate::state::AppState;
 
 /// Build the enrollment sub-router.
@@ -62,12 +61,13 @@ async fn create_enrollment_token(
     auth.require_admin()?;
 
     let token = Uuid::new_v4().to_string();
+    let token_hash = hex_sha256(token.as_bytes());
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(24);
 
     sqlx::query(
         "INSERT INTO enrollment_tokens (token, created_by, expires_at) VALUES ($1, $2, $3)"
     )
-    .bind(&token)
+    .bind(&token_hash)
     .bind(auth.user_id)
     .bind(expires_at)
     .execute(&state.db)
@@ -104,10 +104,11 @@ async fn enroll_device(
         expires_at: chrono::DateTime<chrono::Utc>,
     }
 
+    let token_hash = hex_sha256(body.token.as_bytes());
     let token_row: TokenRow = sqlx::query_as(
         "SELECT id, used, expires_at FROM enrollment_tokens WHERE token = $1"
     )
-    .bind(&body.token)
+    .bind(&token_hash)
     .fetch_optional(&state.db)
     .await?
     .ok_or_else(|| ApiError::BadRequest("Invalid enrollment token".to_string()))?;
@@ -155,7 +156,7 @@ async fn enroll_device(
         .issue_device_cert(device.id)
         .map_err(|e| ApiError::Internal(format!("Failed to issue device cert: {e}")))?;
 
-    let fingerprint = CertificateAuthority::fingerprint(&cert_pem);
+    let fingerprint = crate::services::pki::fingerprint_der_pem(&cert_pem);
 
     // Store certificate.
     let expires_at = chrono::Utc::now() + chrono::Duration::days(365);

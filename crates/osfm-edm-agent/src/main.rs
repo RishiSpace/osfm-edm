@@ -10,6 +10,7 @@ mod policy;
 mod shell;
 mod system_monitor;
 mod telemetry;
+mod tls;
 mod transport;
 
 use clap::Parser;
@@ -34,6 +35,18 @@ struct Cli {
     /// Disable system monitoring (process/file/network events)
     #[arg(long, default_value_t = false)]
     no_monitor: bool,
+
+    /// PEM file of the server CA (preferred trust pin).
+    #[arg(long)]
+    ca: Option<String>,
+
+    /// SHA-256 (hex) of the CA DER — printed by the server at startup.
+    #[arg(long)]
+    ca_fingerprint: Option<String>,
+
+    /// Accept any TLS certificate (MITM). Opt-in only.
+    #[arg(long, default_value_t = false)]
+    insecure: bool,
 }
 
 #[tokio::main]
@@ -47,6 +60,10 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .ok();
+
     tracing::info!("OSFM-EDM agent starting");
 
     // Load config or run enrollment.
@@ -64,7 +81,16 @@ async fn main() -> anyhow::Result<()> {
                 )
             })?;
 
-            enrollment::enroll(server, token).await?
+            enrollment::enroll(
+                server,
+                token,
+                &enrollment::EnrollOpts {
+                    ca_path: cli.ca.clone(),
+                    ca_fingerprint: cli.ca_fingerprint.clone(),
+                    insecure: cli.insecure,
+                },
+            )
+            .await?
         }
         Err(e) => {
             anyhow::bail!("Failed to load config: {e}");
@@ -253,8 +279,11 @@ async fn handle_server_message(
             });
         }
         ServerMessage::RevokeJob { job_id } => {
-            tracing::info!(job_id = %job_id, "Received job revocation");
-            // TODO: cancel running job by job_id
+            if crate::jobs::registry::cancel(job_id) {
+                tracing::info!(job_id = %job_id, "Cancelled running job");
+            } else {
+                tracing::info!(job_id = %job_id, "Revoke ignored — job not running");
+            }
         }
         ServerMessage::RequestInventory => {
             tracing::info!("Server requested inventory — collecting");

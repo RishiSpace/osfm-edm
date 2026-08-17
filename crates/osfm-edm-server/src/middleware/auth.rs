@@ -76,10 +76,23 @@ where
         )
         .map_err(|e| ApiError::Unauthorized(format!("Invalid token: {e}")))?;
 
+        // Role and existence come from the DB — a stale JWT cannot keep a
+        // demoted or deleted user privileged.
+        #[derive(sqlx::FromRow)]
+        struct RoleRow {
+            username: String,
+            role: String,
+        }
+        let row: RoleRow = sqlx::query_as("SELECT username, role FROM users WHERE id = $1")
+            .bind(token_data.claims.sub)
+            .fetch_optional(&app_state.db)
+            .await?
+            .ok_or_else(|| ApiError::Unauthorized("User no longer exists".to_string()))?;
+
         Ok(AuthUser {
             user_id: token_data.claims.sub,
-            username: token_data.claims.username,
-            role: token_data.claims.role,
+            username: row.username,
+            role: row.role,
         })
     }
 }

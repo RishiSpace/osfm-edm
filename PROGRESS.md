@@ -280,3 +280,39 @@ The product is unusable without a web UI. Phase 13 closed the security/schema bl
 - `cargo build -p osfm-edm-console` — success
 - `cargo test --workspace` — includes new envelope parse tests
 - GUI click-through not automated (needs a display + live API)
+
+---
+
+## Phase 16 — TLS + gap close — COMPLETE (2026-08-17)
+
+### Decision / Rationale / Consequence
+
+1. **Built-in rustls, not “proxy only.”** Homelab users will expose :8080. Auto-issue a server cert from the existing internal CA. `ALLOW_INSECURE_HTTP=1` is the explicit escape hatch.
+2. **Pin the CA, do not accept any cert.** Enrollment: `--ca PATH` or `--ca-fingerprint HEX` (TOFU against `/ca.crt`). `--insecure` is opt-in and logged. After enroll, `ca.crt` on disk is the trust anchor for HTTP and WSS.
+3. **Fingerprint is SHA-256 of CA DER**, not PEM text (the old `fingerprint()` hashed PEM bytes).
+4. **Gaps in the same phase** because they are already specified holes, not a new product: revoke token, job cancel+timeout, alert cooldown, hashed enroll tokens, JWT role from DB, PTY shell, screen-lock check, CollectInventory, enroll scripts, console job target + TOTP + log poll, license/lockfile/docs/compose URL.
+
+### Stages
+
+| # | Goal | Success |
+|---|---|---|
+| 1 | TLS server + CA pin on agent/console | HTTPS default; enroll refuses unknown CA |
+| 2 | Security gaps | revoke disconnects; cancel kills; alerts don't storm; tokens hashed |
+| 3 | Product gaps | PTY, inventory job, enroll.{sh,ps1}, console polish |
+| 4 | Hygiene | GPL in Cargo.toml; Cargo.lock tracked; ARCHITECTURE current |
+
+### Built
+- rustls HTTPS/WSS; CA-signed `data/server.crt`; `/ca.crt` + `/ca.fingerprint`; `ALLOW_INSECURE_HTTP` escape hatch
+- Agent/console pin CA via `--ca` / `--ca-fingerprint`; `--insecure` opt-in; WSS uses pinned rustls roots; WS backoff resets
+- Device revoke clears `auth_token_hash` and drops the WS handle
+- Job cancel kills the process; default 300s timeout; CollectInventory sends a real report
+- Alerts skip insert while an unresolved event exists for the same rule+device
+- Enrollment tokens stored as SHA-256; JWT role re-read from DB
+- PTY shell (`portable-pty`); Linux screen-lock check via gsettings (fail closed)
+- `GET /enroll.sh` and `/enroll.ps1`; `scripts/` copies
+- Console: HTTPS default, job log poll, TOTP setup
+- Workspace license GPL-3.0-only; `Cargo.lock` tracked; compose `SERVER_URL=https://localhost:8080`
+
+### Validation
+- `cargo build -p osfm-edm-server -p osfm-edm-agent -p osfm-edm-console`
+- `cargo test --workspace`

@@ -57,6 +57,8 @@ enum Work {
     LoadReports,
     LoadSettings,
     EnrollToken,
+    MfaSetup,
+    MfaVerify(String),
     RequestInventory(Uuid),
     RequestTelemetry(Uuid),
     RevokeDevice(Uuid),
@@ -80,6 +82,8 @@ enum Reply {
     Reports(ComplianceFleet),
     Settings { settings: Settings, status: ServerStatus },
     Token(EnrollToken),
+    MfaUrl(String),
+    MfaEnabled,
     ShellOpened(Uuid),
     ShellClosed,
     OkRefresh,
@@ -118,6 +122,8 @@ pub struct Console {
     reports: Option<ComplianceFleet>,
     settings: Option<Settings>,
     enroll_token: Option<EnrollToken>,
+    mfa_url: Option<String>,
+    mfa_code: String,
     // forms
     job_script: String,
     job_kind: usize,
@@ -175,6 +181,8 @@ impl Console {
             reports: None,
             settings: None,
             enroll_token: None,
+            mfa_url: None,
+            mfa_code: String::new(),
             job_script: "uname -a".into(),
             job_kind: 0,
             policy_name: String::new(),
@@ -254,6 +262,13 @@ impl Console {
                     self.status = Some(status);
                 }
                 Reply::Token(t) => self.enroll_token = Some(t),
+                Reply::MfaUrl(u) => self.mfa_url = Some(u),
+                Reply::MfaEnabled => {
+                    self.mfa_url = None;
+                    if let Some(u) = &mut self.user {
+                        u.totp_enabled = true;
+                    }
+                }
                 Reply::ShellOpened(id) => {
                     self.shell_session = Some(id);
                     self.shell_out.clear();
@@ -306,10 +321,18 @@ impl eframe::App for Console {
         self.pump();
         ctx.request_repaint_after(std::time::Duration::from_millis(200));
 
-        if self.user.is_some() && self.screen == Screen::Overview && self.last_refresh.elapsed().as_secs() >= 15 && !self.busy
-        {
-            self.last_refresh = Instant::now();
-            self.send(Work::LoadOverview);
+        if self.user.is_some() && !self.busy {
+            let due = match self.screen {
+                Screen::Overview if self.last_refresh.elapsed().as_secs() >= 15 => Some(Work::LoadOverview),
+                Screen::Job if self.last_refresh.elapsed().as_secs() >= 2 => {
+                    self.selected_job.map(Work::LoadJob)
+                }
+                _ => None,
+            };
+            if let Some(work) = due {
+                self.last_refresh = Instant::now();
+                self.send(work);
+            }
         }
 
         if self.user.is_none() {
@@ -419,9 +442,7 @@ impl Console {
                 ui.add_space(8.0);
                 let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if ui.button(RichText::new("Sign in").color(Color32::BLACK)).clicked() || enter {
-                    if let Ok(api) = Api::new(self.api_url.clone()) {
-                        self.api = api;
-                    }
+                    // Keep the TLS trust store from startup; only the host string changes.
                     self.send(Work::Login {
                         user: self.username.clone(),
                         pass: self.password.clone(),
@@ -889,6 +910,23 @@ impl Console {
             ui.label(format!("expires {}", t.expires_at));
             ui.text_edit_singleline(&mut t.token.clone());
         }
+        ui.separator();
+        ui.label("TOTP");
+        if self.user.as_ref().is_some_and(|u| u.totp_enabled) {
+            ui.label("enabled");
+        }
+        if ui.button("Start TOTP setup").clicked() {
+            self.send(Work::MfaSetup);
+        }
+        if let Some(url) = self.mfa_url.clone() {
+            ui.monospace(url);
+            ui.horizontal(|ui| {
+                ui.text_edit_singleline(&mut self.mfa_code);
+                if ui.button("Enable").clicked() {
+                    self.send(Work::MfaVerify(self.mfa_code.clone()));
+                }
+            });
+        }
     }
 
     fn ui_shell(&mut self, ui: &mut egui::Ui) {
@@ -1063,6 +1101,19 @@ fn run(api: &Api, work: Work) -> Result<Reply, ApiError> {
             status: api.get("/api/v1/settings/status")?,
         }),
         Work::EnrollToken => Ok(Reply::Token(api.post_no_body("/api/v1/enroll/token")?)),
+        Work::MfaSetup => {
+            let v: serde_json::Value = api.post_no_body("/api/v1/auth/mfa/setup")?;
+            let url = v
+                .get("otpauth_url")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
+            Ok(Reply::MfaUrl(url))
+        }
+        Work::MfaVerify(code) => {
+            api.post_empty("/api/v1/auth/mfa/verify", Some(&serde_json::json!({ "code": code })))?;
+            Ok(Reply::MfaEnabled)
+        }
         Work::RequestInventory(id) => {
             api.post_empty(&format!("/api/v1/devices/{id}/request-inventory"), None::<&()>)?;
             run(api, Work::LoadDevice(id))

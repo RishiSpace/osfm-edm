@@ -41,16 +41,16 @@ pub async fn run_ws_loop(
 
         tracing::info!(url = %ws_url, "Connecting to server WebSocket");
 
-        match connect_and_run(&ws_url, &config.device_token, outbound_rx, &inbound_tx).await {
+        match connect_and_run(config, &ws_url, outbound_rx, &inbound_tx).await {
             Ok(()) => {
                 tracing::info!("WebSocket connection closed gracefully");
+                backoff_secs = 1;
             }
             Err(e) => {
                 tracing::error!(error = %e, "WebSocket connection error");
             }
         }
 
-        // Exponential backoff before reconnecting.
         tracing::info!(backoff = backoff_secs, "Reconnecting in {} seconds", backoff_secs);
         tokio::time::sleep(tokio::time::Duration::from_secs(backoff_secs)).await;
         backoff_secs = (backoff_secs * 2).min(max_backoff);
@@ -58,8 +58,8 @@ pub async fn run_ws_loop(
 }
 
 async fn connect_and_run(
+    config: &AgentConfig,
     ws_url: &str,
-    device_token: &str,
     outbound_rx: &mut mpsc::Receiver<AgentMessage>,
     inbound_tx: &mpsc::Sender<ServerMessage>,
 ) -> Result<(), WsError> {
@@ -72,15 +72,28 @@ async fn connect_and_run(
         .map_err(WsError::Tungstenite)?;
     request.headers_mut().insert(
         "Authorization",
-        format!("Bearer {device_token}")
+        format!("Bearer {}", config.device_token)
             .parse()
             .map_err(|_| WsError::RequestBuild("invalid token header value".to_string()))?,
     );
 
-    // The per-device token authenticates this connection. The issued mTLS
-    // certificates are reserved for a future mutually-authenticated TLS
-    // transport (see DEVIATIONS.md).
-    let (ws_stream, _response) = tokio_tungstenite::connect_async(request).await?;
+    let ws_stream = if ws_url.starts_with("wss://") {
+        let pem = std::fs::read_to_string(&config.ca_path).map_err(|e| {
+            WsError::RequestBuild(format!("read CA {}: {e}", config.ca_path))
+        })?;
+        let tls = crate::tls::rustls_config_from_ca_pem(&pem)
+            .map_err(WsError::RequestBuild)?;
+        tokio_tungstenite::connect_async_tls_with_config(
+            request,
+            None,
+            false,
+            Some(tokio_tungstenite::Connector::Rustls(tls)),
+        )
+        .await?
+        .0
+    } else {
+        tokio_tungstenite::connect_async(request).await?.0
+    };
     tracing::info!("WebSocket connected");
 
     let (mut write, mut read) = ws_stream.split();

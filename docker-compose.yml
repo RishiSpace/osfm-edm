@@ -29,13 +29,12 @@ services:
       JWT_SECRET: change_me_to_a_long_random_string_at_least_64_chars
       SERVER_PORT: "8080"
       AGENT_PORT: "8443"
-      SERVER_URL: "https://localhost:8443"
+      SERVER_URL: "https://localhost:8080"
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: change_me_immediately
       CORS_ORIGIN: http://localhost:3000
     ports:
       - "8080:8080"
-      - "8443:8443"
     volumes:
       - server_data:/app/data
 

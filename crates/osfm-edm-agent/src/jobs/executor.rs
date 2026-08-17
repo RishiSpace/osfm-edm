@@ -7,23 +7,28 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+const DEFAULT_TIMEOUT_SECS: u64 = 300;
+
 /// Execute a job payload and stream output back via the outbound channel.
 pub async fn execute_job(
     job_id: Uuid,
     payload: JobPayload,
     outbound_tx: mpsc::Sender<AgentMessage>,
 ) {
+    let (kill_tx, kill_rx) = tokio::sync::oneshot::channel();
+    super::registry::register(job_id, kill_tx);
+
     match payload {
         JobPayload::RunScript { shell, script } => {
-            execute_script(job_id, shell, script, None, outbound_tx).await;
+            execute_script(job_id, shell, script, Some(DEFAULT_TIMEOUT_SECS), kill_rx, outbound_tx).await;
         }
         JobPayload::InstallPackage { manager, package, .. } => {
             let cmd = package_cmd(&manager, "install", &package);
-            execute_script(job_id, ShellType::Bash, cmd, None, outbound_tx).await;
+            execute_script(job_id, ShellType::Bash, cmd, Some(600), kill_rx, outbound_tx).await;
         }
         JobPayload::UninstallPackage { manager, package } => {
             let cmd = package_cmd(&manager, "remove", &package);
-            execute_script(job_id, ShellType::Bash, cmd, None, outbound_tx).await;
+            execute_script(job_id, ShellType::Bash, cmd, Some(600), kill_rx, outbound_tx).await;
         }
         JobPayload::PushFile { destination, content_b64, permissions } => {
             // Decode base64 content and write to destination. All interpolated
@@ -39,21 +44,26 @@ pub async fn execute_job(
             } else {
                 format!("echo {data} | base64 -d > {dest}")
             };
-            execute_script(job_id, ShellType::Bash, cmd, None, outbound_tx).await;
+            execute_script(job_id, ShellType::Bash, cmd, Some(DEFAULT_TIMEOUT_SECS), kill_rx, outbound_tx).await;
         }
         JobPayload::Reboot { delay_seconds } => {
             let cmd = format!("shutdown -r +{}", delay_seconds / 60);
-            execute_script(job_id, ShellType::Bash, cmd, None, outbound_tx).await;
+            execute_script(job_id, ShellType::Bash, cmd, Some(30), kill_rx, outbound_tx).await;
         }
         JobPayload::CollectInventory => {
-            // Trigger an inventory collection — handled separately.
+            super::registry::remove(&job_id);
+            let software = crate::telemetry::software::collect_software();
+            let patches = crate::telemetry::patches::collect_patches();
+            let _ = outbound_tx
+                .send(AgentMessage::InventoryReport { software, patches })
+                .await;
             let _ = outbound_tx
                 .send(AgentMessage::JobCompleted { job_id, exit_code: 0 })
                 .await;
         }
         JobPayload::RunPatchUpdate { patch_ids } => {
             let cmd = format!("apt-get install -y {} 2>&1", patch_ids.join(" "));
-            execute_script(job_id, ShellType::Bash, cmd, None, outbound_tx).await;
+            execute_script(job_id, ShellType::Bash, cmd, Some(600), kill_rx, outbound_tx).await;
         }
     }
 }
@@ -85,6 +95,7 @@ async fn execute_script(
     shell: ShellType,
     script: String,
     timeout_secs: Option<u64>,
+    kill_rx: tokio::sync::oneshot::Receiver<()>,
     outbound_tx: mpsc::Sender<AgentMessage>,
 ) {
     let (program, args) = match shell {
@@ -156,34 +167,27 @@ async fn execute_script(
         }
     });
 
-    // Wait for completion with optional timeout.
-    let exit_code = if let Some(secs) = timeout_secs {
-        match tokio::time::timeout(
-            tokio::time::Duration::from_secs(secs),
-            child.wait(),
-        )
-        .await
-        {
-            Ok(Ok(status)) => status.code().unwrap_or(-1),
-            Ok(Err(e)) => {
-                tracing::error!(job_id = %job_id, error = %e, "Process wait error");
-                -1
-            }
-            Err(_) => {
-                tracing::warn!(job_id = %job_id, "Job timed out after {}s", secs);
-                let _ = child.kill().await;
-                -2
-            }
-        }
-    } else {
-        match child.wait().await {
-            Ok(status) => status.code().unwrap_or(-1),
+    let timeout = timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
+    let exit_code = tokio::select! {
+        status = child.wait() => match status {
+            Ok(s) => s.code().unwrap_or(-1),
             Err(e) => {
                 tracing::error!(job_id = %job_id, error = %e, "Process wait error");
                 -1
             }
+        },
+        _ = kill_rx => {
+            tracing::warn!(job_id = %job_id, "Job cancelled");
+            let _ = child.kill().await;
+            -4
+        }
+        _ = tokio::time::sleep(tokio::time::Duration::from_secs(timeout)) => {
+            tracing::warn!(job_id = %job_id, "Job timed out after {timeout}s");
+            let _ = child.kill().await;
+            -2
         }
     };
+    super::registry::remove(&job_id);
 
     let _ = stdout_task.await;
     let _ = stderr_task.await;

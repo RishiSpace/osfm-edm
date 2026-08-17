@@ -83,6 +83,19 @@ pub async fn check_alerts(db: &PgPool, config: &Config, device_id: Uuid) {
         };
 
         if triggered {
+            let open: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM alert_events \
+                 WHERE rule_id = $1 AND device_id = $2 AND resolved_at IS NULL)",
+            )
+            .bind(rule.id)
+            .bind(device_id)
+            .fetch_one(db)
+            .await
+            .unwrap_or(false);
+            if open {
+                continue;
+            }
+
             tracing::warn!(
                 device_id = %device_id,
                 rule = %rule.name,
@@ -93,7 +106,6 @@ pub async fn check_alerts(db: &PgPool, config: &Config, device_id: Uuid) {
                 "Alert triggered"
             );
 
-            // Insert alert event and dispatch notification.
             let event_id: Option<Uuid> = sqlx::query_scalar(
                 "INSERT INTO alert_events (rule_id, device_id, severity, message, triggered_at) \
                  VALUES ($1, $2, $3, $4, now()) RETURNING id",

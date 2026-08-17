@@ -42,6 +42,8 @@ pub struct Config {
     pub ntfy_topic: Option<String>,
     /// ntfy.sh server URL (default: https://ntfy.sh).
     pub ntfy_server: String,
+    /// Bind plaintext HTTP instead of rustls. Opt-in only.
+    pub allow_insecure_http: bool,
 }
 
 impl Config {
@@ -69,7 +71,7 @@ impl Config {
             .map_err(|_| ConfigError::Invalid("AGENT_PORT must be a valid port number"))?;
 
         let server_url = env::var("SERVER_URL")
-            .unwrap_or_else(|_| format!("https://localhost:{agent_port}"));
+            .unwrap_or_else(|_| format!("https://localhost:{server_port}"));
 
         let admin_username = env::var("ADMIN_USERNAME")
             .unwrap_or_else(|_| "admin".to_string());
@@ -113,15 +115,27 @@ impl Config {
             ntfy_topic: env::var("NTFY_TOPIC").ok().filter(|s| !s.is_empty()),
             ntfy_server: env::var("NTFY_SERVER")
                 .unwrap_or_else(|_| "https://ntfy.sh".to_string()),
+            allow_insecure_http: env::var("ALLOW_INSECURE_HTTP")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false),
         })
     }
 
-    /// True when custom TLS material is configured. Used to decide whether the
-    /// `Secure` attribute belongs on cookies. (Serving TLS directly is
-    /// reserved for a future release — terminate TLS at a reverse proxy and
-    /// set both TLS_CERT_PATH/TLS_KEY_PATH to signal "external TLS".)
+    /// Cookies get `Secure` when we actually speak TLS.
     pub fn tls_enabled(&self) -> bool {
-        self.tls_cert_path.is_some() && self.tls_key_path.is_some()
+        !self.allow_insecure_http
+    }
+
+    /// Hostnames / IPs to put on the auto-issued server certificate.
+    pub fn tls_hostnames(&self) -> Vec<String> {
+        let mut hosts = vec!["localhost".into(), "127.0.0.1".into()];
+        if let Some(rest) = self.server_url.split("://").nth(1) {
+            let host = rest.split(['/', ':']).next().unwrap_or("");
+            if !host.is_empty() && !hosts.iter().any(|h| h == host) {
+                hosts.insert(0, host.to_string());
+            }
+        }
+        hosts
     }
 }
 

@@ -14,9 +14,11 @@ This file documents any deviations from the originally specified technology stac
 
 **To revert:** terminate TLS with client-cert verification in `ws/agent_hub.rs` (the CA already exists in `services/pki.rs`), extracting the device ID from the certificate CN. Keep job signing regardless — defense in depth.
 
-## 2. Server-terminated TLS → deferred (2026-08-03)
+## 2. Server-terminated TLS — implemented (2026-08-17)
 
-The server binds plain HTTP/WS on `SERVER_PORT`. `TLS_CERT_PATH`/`TLS_KEY_PATH` are configuration scaffolding: they currently only toggle the `Secure` attribute on the refresh cookie. For production, terminate TLS at a reverse proxy (Caddy/nginx/Traefik) in front of the server. Built-in rustls termination remains an option for a future phase.
+The server now binds **HTTPS** on `SERVER_PORT` with rustls. A server certificate is auto-issued by the internal CA (`data/server.crt`) unless `TLS_CERT_PATH`/`TLS_KEY_PATH` are set. `ALLOW_INSECURE_HTTP=1` reverts to plaintext.
+
+Agents pin the CA (`--ca` or `--ca-fingerprint` against `/ca.crt`). `--insecure` is opt-in. Device mTLS is still unused; identity remains the per-device token (deviation #1).
 
 ## 3. Route parameter syntax — axum 0.7 (`:id`), not axum 0.8 (`{id}`) (2026-08-03)
 

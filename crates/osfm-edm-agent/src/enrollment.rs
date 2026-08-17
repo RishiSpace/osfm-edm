@@ -1,11 +1,11 @@
-//! Enrollment — handles first-time agent enrollment with the server.
+//! First-time enrollment. TLS is pinned to the server CA.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::config::AgentConfig;
+use crate::tls;
 
-/// Response from the server enrollment endpoint.
 #[derive(Debug, Deserialize)]
 struct EnrollApiResponse {
     data: Option<EnrollData>,
@@ -19,10 +19,8 @@ struct EnrollData {
     key_pem: String,
     ca_pem: String,
     server_url: String,
-    /// Per-device WebSocket auth token (returned once by the server).
     #[serde(default)]
     device_token: String,
-    /// Base64 Ed25519 public key for job signature verification.
     #[serde(default)]
     server_signing_pubkey: String,
 }
@@ -36,7 +34,6 @@ struct EnrollRequest {
     arch: Option<String>,
 }
 
-/// Errors during enrollment.
 #[derive(Debug, thiserror::Error)]
 pub enum EnrollError {
     #[error("HTTP error: {0}")]
@@ -45,10 +42,17 @@ pub enum EnrollError {
     Server(String),
     #[error("Config error: {0}")]
     Config(#[from] crate::config::ConfigError),
+    #[error("{0}")]
+    Tls(String),
 }
 
-/// Run the enrollment flow: POST to the server, save certs and config.
-pub async fn enroll(server_url: &str, token: &str) -> Result<AgentConfig, EnrollError> {
+pub struct EnrollOpts {
+    pub ca_path: Option<String>,
+    pub ca_fingerprint: Option<String>,
+    pub insecure: bool,
+}
+
+pub async fn enroll(server_url: &str, token: &str, opts: &EnrollOpts) -> Result<AgentConfig, EnrollError> {
     let hostname = gethostname();
     let os = current_os();
     let os_version = os_version_string();
@@ -56,9 +60,7 @@ pub async fn enroll(server_url: &str, token: &str) -> Result<AgentConfig, Enroll
 
     tracing::info!(server = server_url, hostname = %hostname, "Starting enrollment");
 
-    let client = reqwest::Client::builder()
-        .danger_accept_invalid_certs(true) // Allow self-signed server certs during enrollment
-        .build()?;
+    let client = build_enroll_client(server_url, opts).await?;
 
     let url = format!("{}/api/v1/enroll", server_url.trim_end_matches('/'));
     let resp: EnrollApiResponse = client
@@ -83,7 +85,16 @@ pub async fn enroll(server_url: &str, token: &str) -> Result<AgentConfig, Enroll
         .data
         .ok_or_else(|| EnrollError::Server("Empty response from server".to_string()))?;
 
-    // Save certificates to disk.
+    if !data.ca_pem.is_empty() {
+        if let Some(fp) = &opts.ca_fingerprint {
+            if !tls::fingerprints_match(&data.ca_pem, fp) {
+                return Err(EnrollError::Tls(
+                    "server returned a CA that does not match --ca-fingerprint".into(),
+                ));
+            }
+        }
+    }
+
     let cert_path = AgentConfig::save_pem("device.crt", &data.cert_pem)?;
     let key_path = AgentConfig::save_pem("device.key", &data.key_pem)?;
     let ca_path = AgentConfig::save_pem("ca.crt", &data.ca_pem)?;
@@ -95,7 +106,6 @@ pub async fn enroll(server_url: &str, token: &str) -> Result<AgentConfig, Enroll
         tracing::warn!("Server returned no signing public key — job signature verification will reject all jobs");
     }
 
-    // Build and save config.
     let config = AgentConfig {
         server_url: data.server_url,
         device_id: data.device_id,
@@ -113,8 +123,54 @@ pub async fn enroll(server_url: &str, token: &str) -> Result<AgentConfig, Enroll
 
     config.save()?;
     tracing::info!(device_id = %data.device_id, "Enrollment successful");
-
     Ok(config)
+}
+
+async fn build_enroll_client(server_url: &str, opts: &EnrollOpts) -> Result<reqwest::Client, EnrollError> {
+    if opts.insecure {
+        tracing::warn!("--insecure: accepting any TLS certificate (MITM possible)");
+        return Ok(reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()?);
+    }
+
+    if let Some(path) = &opts.ca_path {
+        let pem = std::fs::read(path).map_err(|e| EnrollError::Tls(e.to_string()))?;
+        let cert = reqwest::Certificate::from_pem(&pem).map_err(|e| EnrollError::Tls(e.to_string()))?;
+        return Ok(reqwest::Client::builder()
+            .add_root_certificate(cert)
+            .https_only(server_url.starts_with("https://"))
+            .build()?);
+    }
+
+    if server_url.starts_with("https://") {
+        let fp = opts.ca_fingerprint.as_deref().ok_or_else(|| {
+            EnrollError::Tls(
+                "HTTPS enrollment requires --ca PATH, --ca-fingerprint HEX (from the server log), or --insecure".into(),
+            )
+        })?;
+        let insecure = reqwest::Client::builder()
+            .danger_accept_invalid_certs(true)
+            .build()?;
+        let ca_url = format!("{}/ca.crt", server_url.trim_end_matches('/'));
+        let pem = insecure
+            .get(&ca_url)
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+        if !tls::fingerprints_match(&pem, fp) {
+            return Err(EnrollError::Tls(format!(
+                "CA fingerprint mismatch (expected {fp})"
+            )));
+        }
+        let cert = reqwest::Certificate::from_pem(pem.as_bytes())
+            .map_err(|e| EnrollError::Tls(e.to_string()))?;
+        return Ok(reqwest::Client::builder().add_root_certificate(cert).build()?);
+    }
+
+    Ok(reqwest::Client::new())
 }
 
 fn gethostname() -> String {

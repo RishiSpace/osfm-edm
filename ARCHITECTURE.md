@@ -158,8 +158,7 @@ The **Axum-based API server** is the brain of the platform. It runs on two ports
 
 | Port | Purpose | Auth |
 |------|---------|------|
-| `:8080` | REST API for the dashboard | JWT Bearer |
-| `:8443` | WebSocket for agent connections | mTLS (device certificates) |
+| `:8080` | REST + `/ws` (HTTPS/WSS) | JWT (humans), device token (agents) |
 
 **Startup sequence:**
 1. Load config from environment variables
@@ -307,7 +306,7 @@ Agent                           Server                         Dashboard
 |-------|-----------|
 | Dashboard → Server | JWT access tokens (15min) + httpOnly refresh cookie (7d) |
 | Authorization | `require_admin()` gate on all write endpoints; `viewer` role is read-only |
-| Agent → Server | Per-device 256-bit token (Bearer header, SHA-256 hashed at rest). mTLS certificates are issued at enrollment but not yet used for the handshake — see DEVIATIONS.md |
+| Agent → Server | HTTPS/WSS (rustls). Agents pin the internal CA (`--ca` / `--ca-fingerprint`). Per-device 256-bit token (Bearer, SHA-256 at rest). Device certs are issued but not used for the handshake — see DEVIATIONS.md |
 | Job integrity | Ed25519 signature on every `DispatchJob`, verified by the agent before execution |
 | Passwords | bcrypt hashing |
 | 2FA | TOTP (RFC 6238) — optional per-user |
@@ -316,7 +315,7 @@ Agent                           Server                         Dashboard
 | Audit trail | Every POST/PATCH/PUT/DELETE logged with user, action, IP |
 | Enrollment | One-time tokens with 24h expiry |
 | Key material | CA key, signing key, agent secrets written with 0600 permissions |
-| Transport | ⚠️ Plaintext HTTP/WS for now — terminate TLS at a reverse proxy until built-in TLS lands (DEVIATIONS.md #2) |
+| Transport | rustls HTTPS/WSS on `SERVER_PORT`. `ALLOW_INSECURE_HTTP=1` is an explicit opt-out. |
 
 **Route parameter syntax note:** this codebase pins **axum 0.7**, whose router expects `:param` (not `{param}` — that syntax requires axum 0.8+). See DEVIATIONS.md #3.
 

@@ -75,7 +75,7 @@ async fn authenticate_agent(state: &AppState, device_id: Uuid, headers: &HeaderM
             .flatten();
 
     match stored {
-        Some(hash) => hash == presented_hash,
+        Some(hash) => constant_time_eq(hash.as_bytes(), presented_hash.as_bytes()),
         None => {
             tracing::warn!(
                 device_id = %device_id,
@@ -84,6 +84,14 @@ async fn authenticate_agent(state: &AppState, device_id: Uuid, headers: &HeaderM
             false
         }
     }
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    use subtle::ConstantTimeEq;
+    if a.len() != b.len() {
+        return false;
+    }
+    a.ct_eq(b).into()
 }
 
 /// Manages the full lifecycle of a single agent WebSocket connection.

@@ -106,6 +106,13 @@ impl AppState {
             let _ = entry.tx.send(msg.clone()).await;
         }
     }
+
+    /// Drop the live WebSocket write handle so the agent is kicked off.
+    pub fn disconnect_agent(&self, device_id: &Uuid) {
+        if self.connected_agents.remove(device_id).is_some() {
+            tracing::info!(device_id = %device_id, "Disconnected agent");
+        }
+    }
 }
 
 impl std::fmt::Debug for AppState {

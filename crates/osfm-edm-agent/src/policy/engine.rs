@@ -162,8 +162,13 @@ fn check_rule(rule: &PolicyRule) -> Option<ComplianceViolation> {
         }
         PolicyRule::ScreenLock { timeout_minutes, require_password } => {
             if *timeout_minutes == 0 && !require_password { return None; }
-            // Screen lock compliance — platform-specific checks would go here.
-            None
+            match check_screen_lock(*timeout_minutes, *require_password) {
+                Ok(()) => None,
+                Err(message) => Some(ComplianceViolation {
+                    rule_type: "screen_lock".to_string(),
+                    message,
+                }),
+            }
         }
         PolicyRule::OsUpdate { auto_install, .. } => {
             // Check if auto-updates are configured (Linux: unattended-upgrades).
@@ -198,6 +203,42 @@ fn check_rule(rule: &PolicyRule) -> Option<ComplianceViolation> {
             None
         }
     }
+}
+
+/// Fail closed: if we cannot prove the lock policy, report a violation.
+fn check_screen_lock(timeout_minutes: u32, require_password: bool) -> Result<(), String> {
+    if !cfg!(target_os = "linux") {
+        return Err("screen lock check is only implemented on Linux".into());
+    }
+    let max_idle = timeout_minutes.saturating_mul(60);
+    if let Ok(out) = std::process::Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.session", "idle-delay"])
+        .output()
+    {
+        let text = String::from_utf8_lossy(&out.stdout);
+        let secs = text
+            .split_whitespace()
+            .rev()
+            .find_map(|t| t.parse::<u32>().ok());
+        if let Some(secs) = secs {
+            if timeout_minutes > 0 && secs > max_idle {
+                return Err(format!("idle-delay is {secs}s, policy max {max_idle}s"));
+            }
+        }
+        if require_password {
+            let lock = std::process::Command::new("gsettings")
+                .args(["get", "org.gnome.desktop.screensaver", "lock-enabled"])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).contains("true"))
+                .unwrap_or(false);
+            if !lock {
+                return Err("screensaver lock-enabled is not true".into());
+            }
+        }
+        return Ok(());
+    }
+    Err("could not read screen-lock settings (gsettings missing)".into())
 }
 
 /// Check if firewall is enabled on Linux.

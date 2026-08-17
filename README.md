@@ -28,11 +28,8 @@ docker-compose up -d
 ## Enrolling a Device
 
 ```bash
-# On the managed device (Linux/macOS):
-curl -sSL https://your-server:8080/enroll.sh | bash -s -- --token <enrollment-token>
-
-# On Windows (PowerShell):
-irm https://your-server:8080/enroll.ps1 | iex -Args "--token <enrollment-token>"
+# Fingerprint is printed at server start: "CA SHA-256 fingerprint: …"
+osfm-edm-agent --server https://your-server:8080 --token <enrollment-token> --ca-fingerprint <hex>
 ```
 
 ## Technology Stack
@@ -46,7 +43,7 @@ irm https://your-server:8080/enroll.ps1 | iex -Args "--token <enrollment-token>"
 | Console | Rust (`egui`/`eframe`) — native window, no browser |
 | Web UI (optional) | TypeScript (Next.js 14) behind `docker compose --profile web` |
 | Database | PostgreSQL 16 + TimescaleDB |
-| Auth | JWT + mTLS + TOTP 2FA |
+| Auth | JWT + TOTP; agent token + TLS pin; Ed25519 jobs |
 
 ## Development
 
@@ -129,10 +126,9 @@ The project has a working Rust backend, Linux agent, and a native `egui` console
 | Deployment (Docker, Compose, CI)   | Functional        | 70%     | Compose starts DB + server. Native console runs on the host. Web UI is an optional compose profile. No CI yet. |
 
 ### Known Issues
-- Transport is plaintext HTTP/WS — terminate TLS at a reverse proxy before exposing it (built-in TLS planned). Agents are authenticated with per-device tokens and jobs are Ed25519-signed (see DEVIATIONS.md).
-- Shell sessions use piped I/O, not a real PTY — no terminal escape sequence support.
 - No CI/CD pipeline.
 - Devices enrolled before Phase 13 lack an auth token and must be re-enrolled.
+- First enroll over HTTPS needs `--ca-fingerprint` from the server log (or `--ca` / `--insecure`).
 
 See [PROGRESS.md](PROGRESS.md) for phase-by-phase history and [ARCHITECTURE.md](ARCHITECTURE.md) for intended design.
 

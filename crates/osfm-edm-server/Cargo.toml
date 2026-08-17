@@ -33,8 +33,11 @@ thiserror = "1"
 anyhow = "1"
 
 # TLS / PKI
-rcgen = "0.13"
-rustls = "0.23"
+rcgen = { version = "0.14", features = ["pem", "x509-parser"] }
+rustls = { version = "0.23", features = ["ring"] }
+rustls-pemfile = "2"
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+subtle = "2"
 
 # 2FA
 totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }

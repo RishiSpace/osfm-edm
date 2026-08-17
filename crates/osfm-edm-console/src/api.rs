@@ -30,13 +30,24 @@ struct Inner {
     token: Mutex<Option<String>>,
 }
 
+pub struct TlsOpts {
+    pub ca_pem: Option<Vec<u8>>,
+    pub insecure: bool,
+}
+
 impl Api {
-    pub fn new(base: String) -> Result<Self, ApiError> {
-        let client = Client::builder()
+    pub fn new(base: String, tls: TlsOpts) -> Result<Self, ApiError> {
+        let mut builder = Client::builder()
             .cookie_store(true)
-            .timeout(Duration::from_secs(20))
-            .build()
-            .map_err(|e| ApiError::Message(e.to_string()))?;
+            .timeout(Duration::from_secs(20));
+        if tls.insecure {
+            builder = builder.danger_accept_invalid_certs(true);
+        } else if let Some(pem) = tls.ca_pem {
+            let cert = reqwest::Certificate::from_pem(&pem)
+                .map_err(|e| ApiError::Message(e.to_string()))?;
+            builder = builder.add_root_certificate(cert);
+        }
+        let client = builder.build().map_err(|e| ApiError::Message(e.to_string()))?;
         Ok(Self {
             inner: std::sync::Arc::new(Inner {
                 base: base.trim_end_matches('/').to_string(),
