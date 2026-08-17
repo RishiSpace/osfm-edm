@@ -48,7 +48,8 @@ The platform has **four main components**:
 | `osfm-edm-common` | Rust (lib) | Shared types and protocol definitions |
 | `osfm-edm-server` | Rust (bin) | Axum REST API + WebSocket hub |
 | `osfm-edm-agent` | Rust (bin) | Per-device agent daemon |
-| Dashboard | Next.js 14 | Web UI for device management (`dashboard/`) |
+| Console | Rust / egui | Native admin UI (`osfm-edm-console`) |
+| Dashboard | Next.js 14 (optional) | Browser UI (`dashboard/`, compose profile `web`) |
 
 ---
 

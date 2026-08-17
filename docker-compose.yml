@@ -39,7 +39,10 @@ services:
     volumes:
       - server_data:/app/data
 
+  # Optional Chromium-based UI. Prefer the native console:
+  #   cargo run -p osfm-edm-console -- --api http://localhost:8080
   dashboard:
+    profiles: ["web"]
     build:
       context: .
       dockerfile: Dockerfile.dashboard

@@ -43,29 +43,30 @@ irm https://your-server:8080/enroll.ps1 | iex -Args "--token <enrollment-token>"
 | System Monitor (Windows) | Planned: ETW, Win32 APIs |
 | Agent | Rust (Tokio, sysinfo, rustls) |
 | API Server | Rust (Axum, SQLx, Tower) |
-| Dashboard | TypeScript (Next.js 14, Tailwind, shadcn/ui) |
+| Console | Rust (`egui`/`eframe`) — native window, no browser |
+| Web UI (optional) | TypeScript (Next.js 14) behind `docker compose --profile web` |
 | Database | PostgreSQL 16 + TimescaleDB |
 | Auth | JWT + mTLS + TOTP 2FA |
 
 ## Development
 
 ```bash
-# Prerequisites: Rust 1.78+, Node 20 LTS, PostgreSQL 16 with TimescaleDB
+# Prerequisites: Rust 1.78+, PostgreSQL 16 with TimescaleDB
+# (Node is only needed for the optional web console)
 
 # Backend
 cargo build
 
-# Dashboard (API must already be running)
-cd dashboard && npm install && npm run dev
-# → http://localhost:3000
+# Native console (API must already be running)
+cargo run -p osfm-edm-console -- --api http://localhost:8080
 ```
 
 ## Architecture
 
 ```
 ┌─────────────┐    WebSocket/mTLS    ┌──────────────┐    SSE     ┌───────────┐
-│  Agent      │◄────────────────────►│  API Server  │◄──────────►│ Dashboard │
-│  (per host) │                      │  (Axum)      │   REST     │ (Next.js) │
+│  Agent      │◄────────────────────►│  API Server  │◄──────────►│ Console   │
+│  (per host) │                      │  (Axum)      │   REST     │ (egui)    │
 └──────┬──────┘                      └──────┬───────┘            └───────────┘
        │                                    │
        │ procfs / netlink / fanotify        │ SQLx
@@ -94,7 +95,7 @@ cd dashboard && npm install && npm run dev
 - [x] **Agent** — Enrollment, heartbeat, telemetry, job execution, policy checks, inventory collection
 - [x] **Linux System Monitor** — User-space process (netlink proc connector), file (fanotify), and network (/proc/net/tcp) event tracking
 - [x] **Linux Platform Enforcers** — Firewall (ufw), USB storage (sysfs/modprobe), screen lock (gsettings/xset), auto-updates (apt)
-- [x] **Dashboard UI** — Next.js 14 console: overview, devices, telemetry charts, jobs, policies, groups, alerts, reports, settings, remote shell
+- [x] **Dashboard UI** — Next.js 14 console (optional) + native `egui` console (default)
 
 ### 🚧 Pending
 
@@ -109,7 +110,7 @@ cd dashboard && npm install && npm run dev
 
 **Overall progress: ~70%** toward the full project goal (usable self-hosted platform with working dashboard, reliable alerts, active policy enforcement, and easy deployment).
 
-The project has a working Rust backend, Linux agent, and a Next.js 14 console. Remaining work is TLS, Windows/macOS agents, and CI.
+The project has a working Rust backend, Linux agent, and a native `egui` console (no Chromium). Remaining work is TLS, Windows/macOS agents, and CI.
 
 ### Component Status
 
@@ -122,9 +123,10 @@ The project has a working Rust backend, Linux agent, and a Next.js 14 console. R
 | Linux System Monitor               | Implemented       | 80%     | User-space using netlink proc connector + fanotify + /proc/net. Schema mismatch fixed (migration 012). |
 | Policy System                      | Functional        | 80%     | Full CRUD + assignment + WS push + compliance reporting. Linux enforcers (ufw, USB, screen lock, auto-updates, process kill) now **invoked automatically**. |
 | Alerts & Notifications             | Functional        | 70%     | Alert engine evaluates rules. CRUD API for rules. Schema mismatches fixed (migration 013). SMTP/webhook/ntfy.sh notification code functional. |
-| Dashboard / Web UI                 | Functional        | 80%     | Next.js 14 console at `:3000`. Login, fleet overview, devices + charts, jobs + logs, policies, groups, alerts, reports, settings, piped shell. |
+| Native console (egui)              | Functional        | 80%     | `osfm-edm-console` — login, overview, devices + plots, jobs, policies, groups, alerts, reports, settings, piped shell. No browser. |
+| Web UI (optional)                  | Functional        | 80%     | Next.js 14 at `:3000` via `docker compose --profile web`. Same API. |
 | Cross-platform (Windows / macOS)   | Stubs             | 10%     | System monitor and enforcer modules contain only "not yet implemented" placeholders. |
-| Deployment (Docker, Compose, CI)   | Functional        | 70%     | Multi-stage Dockerfiles for server, agent, and dashboard. `docker compose up` starts DB + server + UI. No CI pipeline yet. |
+| Deployment (Docker, Compose, CI)   | Functional        | 70%     | Compose starts DB + server. Native console runs on the host. Web UI is an optional compose profile. No CI yet. |
 
 ### Known Issues
 - Transport is plaintext HTTP/WS — terminate TLS at a reverse proxy before exposing it (built-in TLS planned). Agents are authenticated with per-device tokens and jobs are Ed25519-signed (see DEVIATIONS.md).

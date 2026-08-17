@@ -246,3 +246,37 @@ The product is unusable without a web UI. Phase 13 closed the security/schema bl
 - Windows/macOS monitors
 - CI
 - Real PTY shell; job cancel on the agent
+
+---
+
+## Phase 15 — Native console (no Chromium) — COMPLETE (2026-08-17)
+
+### Decision / Rationale / Consequence
+
+1. **This is the next phase.** User priority is latency. A React/Next/Vite UI always pays Chromium (or equivalent) startup + JS GC. That violates the latency directive even if the pages “work.”
+2. **Rejected:** Tauri / Dioxus-webview / Electron — still a web engine. **Rejected:** keep Next.js as the primary console. **Rejected:** iced (more ceremony, weaker plots) and GTK-only (weak on Windows/macOS).
+3. **Chosen:** `egui` + `eframe` in `crates/osfm-edm-console`. Immediate-mode native GPU UI, one Rust binary, no Node, no browser. Plots via `egui_plot`. HTTP via blocking `reqwest` on a worker thread so the UI thread never waits on the network.
+4. **ratatui considered** — lowest latency, but telemetry charts and a job/shell console are a poor fit. Homelab admins still want a window, not only a TTY.
+5. **Next.js `dashboard/` stays in-tree** as an optional web console (`docker compose --profile web`). It is no longer the documented default. One product, two clients on the same API — do not fork business logic into the UI.
+6. **Auth:** same JWT + refresh cookie as Phase 14. Cookie jar on the native HTTP client. Token never logged.
+
+### Stages
+
+| # | Goal | Success |
+|---|---|---|
+| 1 | Crate + API client | `cargo build -p osfm-edm-console` |
+| 2 | Screens | login, overview, devices+plot, jobs, policies, groups, alerts, reports, settings, shell |
+| 3 | Docs / compose | native is default; Next.js behind `web` profile |
+| 4 | Validate | workspace tests still pass; console compiles |
+
+### Built
+
+- `crates/osfm-edm-console`: egui/eframe window, worker-thread HTTP, cookie jar + JWT refresh.
+- Screens: login, overview (15s poll), devices, device + CPU/RAM plot, jobs/dispatch, policies, groups, alerts, reports, settings/enroll token, piped shell + SSE.
+- Compose: Next.js dashboard moved to profile `web`. Default stack is DB + server; console runs on the host.
+
+### Validation
+
+- `cargo build -p osfm-edm-console` — success
+- `cargo test --workspace` — includes new envelope parse tests
+- GUI click-through not automated (needs a display + live API)

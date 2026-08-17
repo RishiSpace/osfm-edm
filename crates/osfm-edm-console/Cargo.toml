@@ -1,0 +1,22 @@
+[package]
+name = "osfm-edm-console"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native OSFM-EDM admin console (egui, no browser)"
+
+[[bin]]
+name = "osfm-edm-console"
+path = "src/main.rs"
+
+[dependencies]
+eframe = { version = "0.31", default-features = true }
+egui = "0.31"
+egui_plot = "0.31"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "cookies", "rustls-tls"] }
+thiserror = "1"
+clap = { version = "4", features = ["derive"] }
+

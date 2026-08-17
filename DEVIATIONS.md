@@ -25,3 +25,15 @@ Path parameters are written `:param`. The `{param}` brace syntax requires **axum
 ## 4. CORS origin is `CORS_ORIGIN`, not `NEXT_PUBLIC_API_URL` (2026-08-17)
 
 The dashboard is a separate origin (`http://localhost:3000`). `NEXT_PUBLIC_API_URL` is the API address the browser calls. Using it as `Access-Control-Allow-Origin` made every real UI request fail CORS. Set `CORS_ORIGIN` to the dashboard origin.
+
+## 5. Primary console is native `egui`, not Next.js / Vite / Chromium (2026-08-17)
+
+**Original README stack:** TypeScript Next.js 14 dashboard.
+
+**Implemented instead:** `crates/osfm-edm-console` (`egui` + `eframe`). One Rust binary, GPU-composited immediate-mode UI, no browser, no Node at runtime.
+
+**Why:** Chromium (or any webview) is a second engine: hundreds of MB RSS, multi-second cold start, JS GC pauses. Latency is a first-class constraint. Tauri/Dioxus-webview still embed a web engine. iced and GTK were rejected (plots / cross-platform).
+
+**The Next.js app remains** under `dashboard/` for browsers (`docker compose --profile web`). The native console is the default documented client.
+
+**To revert:** document `cd dashboard && npm run dev` as primary again. The API is unchanged.

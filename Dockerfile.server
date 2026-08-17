@@ -8,11 +8,13 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates/osfm-edm-common/Cargo.toml crates/osfm-edm-common/Cargo.toml
 COPY crates/osfm-edm-server/Cargo.toml crates/osfm-edm-server/Cargo.toml
 COPY crates/osfm-edm-agent/Cargo.toml  crates/osfm-edm-agent/Cargo.toml
+COPY crates/osfm-edm-console/Cargo.toml crates/osfm-edm-console/Cargo.toml
 
 # Create dummy src files so cargo can resolve the workspace.
 RUN mkdir -p crates/osfm-edm-common/src && echo "// placeholder" > crates/osfm-edm-common/src/lib.rs \
  && mkdir -p crates/osfm-edm-server/src && echo "fn main() {}" > crates/osfm-edm-server/src/main.rs \
- && mkdir -p crates/osfm-edm-agent/src  && echo "fn main() {}" > crates/osfm-edm-agent/src/main.rs
+ && mkdir -p crates/osfm-edm-agent/src  && echo "fn main() {}" > crates/osfm-edm-agent/src/main.rs \
+ && mkdir -p crates/osfm-edm-console/src && echo "fn main() {}" > crates/osfm-edm-console/src/main.rs
 
 # Pre-build dependencies (cached unless Cargo.toml/Cargo.lock change).
 RUN cargo build --release -p osfm-edm-server 2>/dev/null || true

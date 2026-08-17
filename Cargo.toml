@@ -4,6 +4,7 @@ members = [
     "crates/osfm-edm-common",
     "crates/osfm-edm-server",
     "crates/osfm-edm-agent",
+    "crates/osfm-edm-console",
 ]
 
 [workspace.package]
