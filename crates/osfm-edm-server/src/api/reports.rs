@@ -37,11 +37,10 @@ async fn fleet_compliance(
         .fetch_one(&state.db)
         .await?;
 
-    let compliant: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM compliance_reports WHERE compliant = true",
-    )
-    .fetch_one(&state.db)
-    .await?;
+    let compliant: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM compliance_reports WHERE compliant = true")
+            .fetch_one(&state.db)
+            .await?;
 
     let non_compliant = total - compliant;
 

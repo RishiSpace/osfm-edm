@@ -10,7 +10,9 @@ pub fn fingerprint_pem(pem: &str) -> Option<String> {
     let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut bytes)
         .filter_map(|c| c.ok())
         .collect();
-    certs.first().map(|c| format!("{:x}", Sha256::digest(c.as_ref())))
+    certs
+        .first()
+        .map(|c| format!("{:x}", Sha256::digest(c.as_ref())))
 }
 
 pub fn normalize_fingerprint(s: &str) -> String {
@@ -34,9 +36,7 @@ pub fn rustls_config_from_ca_pem(pem: &str) -> Result<Arc<ClientConfig>, String>
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("parse CA: {e}"))?;
     for c in certs {
-        roots
-            .add(c)
-            .map_err(|e| format!("add CA: {e}"))?;
+        roots.add(c).map_err(|e| format!("add CA: {e}"))?;
     }
     if roots.is_empty() {
         return Err("CA PEM contained no certificates".into());

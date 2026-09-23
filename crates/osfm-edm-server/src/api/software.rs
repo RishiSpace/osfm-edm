@@ -13,8 +13,7 @@ use crate::state::AppState;
 
 /// Build the software sub-router.
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new()
-        .route("/device/:device_id", get(list_device_software))
+    Router::new().route("/device/:device_id", get(list_device_software))
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

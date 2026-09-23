@@ -138,9 +138,7 @@ async fn handle_agent_connection(socket: WebSocket, state: Arc<AppState>, device
         tokio::spawn(async move {
             crate::services::job_queue::dispatch_pending_jobs(&s, did).await;
             crate::services::policy_engine::push_policies_to_device(&s, did).await;
-            let _ = s
-                .send_to_agent(&did, ServerMessage::RequestInventory)
-                .await;
+            let _ = s.send_to_agent(&did, ServerMessage::RequestInventory).await;
         });
     }
 
@@ -170,20 +168,18 @@ async fn handle_agent_connection(socket: WebSocket, state: Arc<AppState>, device
     // Read loop — process incoming AgentMessages.
     while let Some(Ok(msg)) = ws_read.next().await {
         match msg {
-            Message::Text(text) => {
-                match serde_json::from_str::<AgentMessage>(&text) {
-                    Ok(agent_msg) => {
-                        process_agent_message(&read_state, read_device_id, agent_msg).await;
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            device_id = %read_device_id,
-                            error = %e,
-                            "Failed to parse agent message"
-                        );
-                    }
+            Message::Text(text) => match serde_json::from_str::<AgentMessage>(&text) {
+                Ok(agent_msg) => {
+                    process_agent_message(&read_state, read_device_id, agent_msg).await;
                 }
-            }
+                Err(e) => {
+                    tracing::warn!(
+                        device_id = %read_device_id,
+                        error = %e,
+                        "Failed to parse agent message"
+                    );
+                }
+            },
             Message::Ping(data) => {
                 // Axum auto-responds to pings, but we handle it just in case.
                 let _ = state
@@ -267,11 +263,17 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
             for event in accepted {
                 let event_json = serde_json::to_value(event).unwrap_or_default();
                 let event_type = match event {
-                    osfm_edm_common::events::SystemEvent::ProcessStarted { .. } => "process_started",
+                    osfm_edm_common::events::SystemEvent::ProcessStarted { .. } => {
+                        "process_started"
+                    }
                     osfm_edm_common::events::SystemEvent::ProcessExited { .. } => "process_exited",
                     osfm_edm_common::events::SystemEvent::FileAccessed { .. } => "file_accessed",
-                    osfm_edm_common::events::SystemEvent::NetworkConnected { .. } => "network_connected",
-                    osfm_edm_common::events::SystemEvent::RegistryChanged { .. } => "registry_changed",
+                    osfm_edm_common::events::SystemEvent::NetworkConnected { .. } => {
+                        "network_connected"
+                    }
+                    osfm_edm_common::events::SystemEvent::RegistryChanged { .. } => {
+                        "registry_changed"
+                    }
                 };
                 let _ = sqlx::query(
                     "INSERT INTO kernel_events (device_id, time, event_type, payload) VALUES ($1, now(), $2, $3)",
@@ -291,19 +293,21 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
         } => {
             tracing::debug!(job_id = %job_id, stream, "Job log line");
             // Insert the log line into the job_logs table.
-            let _ = sqlx::query(
-                "INSERT INTO job_logs (job_id, line, stream) VALUES ($1, $2, $3)",
-            )
-            .bind(job_id)
-            .bind(&line)
-            .bind(&stream)
-            .execute(&state.db)
-            .await;
+            let _ = sqlx::query("INSERT INTO job_logs (job_id, line, stream) VALUES ($1, $2, $3)")
+                .bind(job_id)
+                .bind(&line)
+                .bind(&stream)
+                .execute(&state.db)
+                .await;
         }
 
         AgentMessage::JobCompleted { job_id, exit_code } => {
             tracing::info!(job_id = %job_id, exit_code, "Job completed");
-            let status = if exit_code == 0 { "completed" } else { "failed" };
+            let status = if exit_code == 0 {
+                "completed"
+            } else {
+                "failed"
+            };
             let _ = sqlx::query(
                 "UPDATE jobs SET status = $1, exit_code = $2, finished_at = now() WHERE id = $3",
             )
@@ -363,7 +367,10 @@ async fn process_agent_message(state: &AppState, device_id: Uuid, msg: AgentMess
             }
         }
 
-        AgentMessage::ShellClosed { session_id, exit_code } => {
+        AgentMessage::ShellClosed {
+            session_id,
+            exit_code,
+        } => {
             tracing::info!(
                 device_id = %device_id,
                 session_id = %session_id,
@@ -416,7 +423,12 @@ async fn persist_inventory(
 
     for patch in patches {
         // Coerce agent-provided strings into the CHECK-constrained domains.
-        let severity = match patch.severity.as_deref().map(|s| s.to_lowercase()).as_deref() {
+        let severity = match patch
+            .severity
+            .as_deref()
+            .map(|s| s.to_lowercase())
+            .as_deref()
+        {
             Some("critical") => "critical",
             Some("important") => "important",
             Some("moderate") => "moderate",

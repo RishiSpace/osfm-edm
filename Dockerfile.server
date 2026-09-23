@@ -32,8 +32,8 @@ RUN cargo build --release -p osfm-edm-server
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates libssl3 \
- && rm -rf /var/lib/apt/lists/*
+    ca-certificates libssl3 curl \
+  && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user.
 RUN useradd --create-home --shell /bin/bash osfm
@@ -51,8 +51,10 @@ USER osfm
 
 # Default environment (overridden by docker-compose or -e flags).
 ENV SERVER_PORT=8080
-ENV AGENT_PORT=8443
 
-EXPOSE 8080 8443
+EXPOSE 8080
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["curl", "-skf", "https://localhost:8080/health"]
 
 ENTRYPOINT ["/app/osfm-edm-server"]

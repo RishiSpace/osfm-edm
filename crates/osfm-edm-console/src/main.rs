@@ -29,8 +29,13 @@ struct Cli {
 
 fn main() -> eframe::Result {
     let cli = Cli::parse();
-    let tls = resolve_tls(&cli.api, cli.ca.as_deref(), cli.ca_fingerprint.as_deref(), cli.insecure)
-        .expect("TLS setup");
+    let tls = resolve_tls(
+        &cli.api,
+        cli.ca.as_deref(),
+        cli.ca_fingerprint.as_deref(),
+        cli.insecure,
+    )
+    .expect("TLS setup");
     let api = Api::new(cli.api, tls).expect("failed to build HTTP client");
 
     let options = eframe::NativeOptions {
@@ -89,7 +94,11 @@ fn resolve_tls(
             .map_err(|e| e.to_string())?;
         let text = String::from_utf8_lossy(&pem);
         let got = fingerprint_der(&text).ok_or_else(|| "CA PEM had no cert".to_string())?;
-        let want: String = fp.chars().filter(|c| c.is_ascii_hexdigit()).collect::<String>().to_ascii_lowercase();
+        let want: String = fp
+            .chars()
+            .filter(|c| c.is_ascii_hexdigit())
+            .collect::<String>()
+            .to_ascii_lowercase();
         if got != want {
             return Err(format!("CA fingerprint mismatch (got {got})"));
         }
@@ -107,8 +116,12 @@ fn resolve_tls(
 fn fingerprint_der(pem: &str) -> Option<String> {
     use sha2::{Digest, Sha256};
     let mut bytes = pem.as_bytes();
-    let certs: Vec<_> = rustls_pemfile::certs(&mut bytes).filter_map(|c| c.ok()).collect();
-    certs.first().map(|c| format!("{:x}", Sha256::digest(c.as_ref())))
+    let certs: Vec<_> = rustls_pemfile::certs(&mut bytes)
+        .filter_map(|c| c.ok())
+        .collect();
+    certs
+        .first()
+        .map(|c| format!("{:x}", Sha256::digest(c.as_ref())))
 }
 
 fn apply_theme(ctx: &egui::Context) {

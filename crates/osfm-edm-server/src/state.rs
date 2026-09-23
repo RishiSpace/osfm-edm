@@ -66,7 +66,12 @@ pub struct AppState {
 
 impl AppState {
     /// Create a new AppState instance.
-    pub fn new(db: PgPool, config: Config, ca: Option<CertificateAuthority>, job_signer: Option<JobSigner>) -> Arc<Self> {
+    pub fn new(
+        db: PgPool,
+        config: Config,
+        ca: Option<CertificateAuthority>,
+        job_signer: Option<JobSigner>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             db,
             config,

@@ -110,7 +110,12 @@ pub fn enforce_screen_lock(timeout_minutes: u32, _require_password: bool) {
             info!("Screen lock timeout set via GNOME gsettings");
             // Also ensure screen locks on idle.
             let _ = std::process::Command::new("gsettings")
-                .args(["set", "org.gnome.desktop.screensaver", "lock-enabled", "true"])
+                .args([
+                    "set",
+                    "org.gnome.desktop.screensaver",
+                    "lock-enabled",
+                    "true",
+                ])
                 .output();
             return;
         }

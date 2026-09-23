@@ -9,10 +9,8 @@ pub struct Config {
     pub database_url: String,
     /// Secret used to sign JWT access and refresh tokens.
     pub jwt_secret: String,
-    /// Port for the HTTP API server (dashboard + REST API).
+    /// Port for the HTTP API server (dashboard + REST API + /ws).
     pub server_port: u16,
-    /// Port for the agent WebSocket listener (mTLS).
-    pub agent_port: u16,
     /// Public server URL used in enrollment responses.
     pub server_url: String,
     /// Default admin username created on first boot.
@@ -49,10 +47,9 @@ pub struct Config {
 impl Config {
     /// Load configuration from environment variables with sensible defaults.
     pub fn from_env() -> Result<Self, ConfigError> {
-        let database_url = env::var("DATABASE_URL")
-            .map_err(|_| ConfigError::Missing("DATABASE_URL"))?;
-        let jwt_secret = env::var("JWT_SECRET")
-            .map_err(|_| ConfigError::Missing("JWT_SECRET"))?;
+        let database_url =
+            env::var("DATABASE_URL").map_err(|_| ConfigError::Missing("DATABASE_URL"))?;
+        let jwt_secret = env::var("JWT_SECRET").map_err(|_| ConfigError::Missing("JWT_SECRET"))?;
 
         if jwt_secret.len() < 32 {
             return Err(ConfigError::Invalid(
@@ -65,19 +62,16 @@ impl Config {
             .parse::<u16>()
             .map_err(|_| ConfigError::Invalid("SERVER_PORT must be a valid port number"))?;
 
-        let agent_port = env::var("AGENT_PORT")
-            .unwrap_or_else(|_| "8443".to_string())
-            .parse::<u16>()
-            .map_err(|_| ConfigError::Invalid("AGENT_PORT must be a valid port number"))?;
+        if env::var("AGENT_PORT").is_ok() {
+            tracing::warn!("AGENT_PORT is removed — the server serves REST + /ws on SERVER_PORT");
+        }
 
-        let server_url = env::var("SERVER_URL")
-            .unwrap_or_else(|_| format!("https://localhost:{server_port}"));
+        let server_url =
+            env::var("SERVER_URL").unwrap_or_else(|_| format!("https://localhost:{server_port}"));
 
-        let admin_username = env::var("ADMIN_USERNAME")
-            .unwrap_or_else(|_| "admin".to_string());
+        let admin_username = env::var("ADMIN_USERNAME").unwrap_or_else(|_| "admin".to_string());
 
-        let admin_password = env::var("ADMIN_PASSWORD")
-            .unwrap_or_else(|_| "admin".to_string());
+        let admin_password = env::var("ADMIN_PASSWORD").unwrap_or_else(|_| "admin".to_string());
 
         let tls_cert_path = env::var("TLS_CERT_PATH").ok().filter(|s| !s.is_empty());
         let tls_key_path = env::var("TLS_KEY_PATH").ok().filter(|s| !s.is_empty());
@@ -88,14 +82,17 @@ impl Config {
         let dashboard_origin = env::var("CORS_ORIGIN")
             .ok()
             .filter(|s| !s.is_empty())
-            .or_else(|| env::var("NEXT_PUBLIC_DASHBOARD_URL").ok().filter(|s| !s.is_empty()))
+            .or_else(|| {
+                env::var("NEXT_PUBLIC_DASHBOARD_URL")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+            })
             .unwrap_or_else(|| "http://localhost:3000".to_string());
 
         Ok(Config {
             database_url,
             jwt_secret,
             server_port,
-            agent_port,
             server_url,
             admin_username,
             admin_password,
@@ -109,12 +106,10 @@ impl Config {
                 .unwrap_or(587),
             smtp_user: env::var("SMTP_USER").ok().filter(|s| !s.is_empty()),
             smtp_password: env::var("SMTP_PASSWORD").ok().filter(|s| !s.is_empty()),
-            smtp_from: env::var("SMTP_FROM")
-                .unwrap_or_else(|_| "osfm-edm@localhost".to_string()),
+            smtp_from: env::var("SMTP_FROM").unwrap_or_else(|_| "osfm-edm@localhost".to_string()),
             webhook_url: env::var("WEBHOOK_URL").ok().filter(|s| !s.is_empty()),
             ntfy_topic: env::var("NTFY_TOPIC").ok().filter(|s| !s.is_empty()),
-            ntfy_server: env::var("NTFY_SERVER")
-                .unwrap_or_else(|_| "https://ntfy.sh".to_string()),
+            ntfy_server: env::var("NTFY_SERVER").unwrap_or_else(|_| "https://ntfy.sh".to_string()),
             allow_insecure_http: env::var("ALLOW_INSECURE_HTTP")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),

@@ -1,32 +1,110 @@
-//! Windows policy enforcer — enforces policy rules using OS-level commands (stub).
+//! Windows policy enforcer — enforces policy rules using built-in OS commands.
 //!
-//! ## Planned approach (not yet implemented)
-//!
-//! - **Firewall**: `netsh advfirewall set allprofiles state on/off`
-//! - **USB storage**: Registry key `HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR\Start` (3=disabled, 4=disabled)
-//! - **Screen lock**: `powercfg /change monitor-timeout-ac <minutes>` + screensaver registry keys
-//! - **Auto-updates**: `Set-MpPreference` / Windows Update registry keys
-//!
-//! All methods work from user-space with Administrator privileges.
+//! All enforcement is best-effort and logs on failure. Requires Administrator.
 
-use tracing::warn;
+use tracing::{info, warn};
 
-/// Enforce firewall policy (Windows — not yet implemented).
-pub fn enforce_firewall(_enabled: bool) {
-    warn!("Windows firewall enforcement not yet implemented (planned: netsh advfirewall)");
+/// Enforce firewall policy via netsh.
+pub fn enforce_firewall(enabled: bool) {
+    let state = if enabled { "on" } else { "off" };
+    info!(state, "Enforcing Windows firewall via netsh");
+    match std::process::Command::new("netsh")
+        .args(["advfirewall", "set", "allprofiles", "state", state])
+        .output()
+    {
+        Ok(o) if o.status.success() => info!("Windows firewall set {state}"),
+        Ok(o) => warn!(stderr = %String::from_utf8_lossy(&o.stderr), "netsh returned non-zero"),
+        Err(e) => warn!(error = %e, "netsh not available"),
+    }
 }
 
-/// Enforce USB storage policy (Windows — not yet implemented).
-pub fn enforce_usb_storage(_allow: bool) {
-    warn!("Windows USB enforcement not yet implemented (planned: USBSTOR registry key)");
+/// Enforce USB storage policy via the USBSTOR service Start value
+/// (3 = manual/allowed, 4 = disabled).
+pub fn enforce_usb_storage(allow: bool) {
+    let value = if allow { "3" } else { "4" };
+    info!(allow, "Enforcing Windows USB storage policy");
+    match std::process::Command::new("reg")
+        .args([
+            "add",
+            r"HKLM\SYSTEM\CurrentControlSet\Services\USBSTOR",
+            "/v",
+            "Start",
+            "/t",
+            "REG_DWORD",
+            "/d",
+            value,
+            "/f",
+        ])
+        .output()
+    {
+        Ok(o) if o.status.success() => info!("USBSTOR Start={value}"),
+        Ok(o) => warn!(stderr = %String::from_utf8_lossy(&o.stderr), "reg returned non-zero"),
+        Err(e) => warn!(error = %e, "reg not available"),
+    }
 }
 
-/// Enforce screen lock policy (Windows — not yet implemented).
-pub fn enforce_screen_lock(_timeout_minutes: u32, _require_password: bool) {
-    warn!("Windows screen lock enforcement not yet implemented (planned: powercfg)");
+/// Enforce screen lock policy via powercfg + screensaver registry keys.
+pub fn enforce_screen_lock(timeout_minutes: u32, require_password: bool) {
+    info!(timeout_minutes, "Enforcing Windows screen lock policy");
+    let mins = timeout_minutes.max(1).to_string();
+    for args in [
+        vec!["/change", "monitor-timeout-ac", &mins],
+        vec!["/change", "monitor-timeout-dc", &mins],
+    ] {
+        if let Err(e) = std::process::Command::new("powercfg").args(&args).output() {
+            warn!(error = %e, "powercfg not available");
+        }
+    }
+    let timeout_secs = (timeout_minutes.max(1) * 60).to_string();
+    let keys: Vec<(&str, &str, &str)> = vec![
+        (
+            r"HKCU\Control Panel\Desktop",
+            "ScreenSaveTimeOut",
+            timeout_secs.as_str(),
+        ),
+        (
+            r"HKCU\Control Panel\Desktop",
+            "ScreenSaverIsSecure",
+            if require_password { "1" } else { "0" },
+        ),
+    ];
+    for (key, name, data) in keys {
+        match std::process::Command::new("reg")
+            .args(["add", key, "/v", name, "/t", "REG_SZ", "/d", data, "/f"])
+            .output()
+        {
+            Ok(o) if o.status.success() => {}
+            Ok(o) => warn!(stderr = %String::from_utf8_lossy(&o.stderr), "reg returned non-zero"),
+            Err(e) => warn!(error = %e, "reg not available"),
+        }
+    }
 }
 
-/// Enforce auto-update policy (Windows — not yet implemented).
-pub fn enforce_auto_updates(_policy: &osfm_edm_common::policy::UpdatePolicy) {
-    warn!("Windows auto-update enforcement not yet implemented (planned: Windows Update registry)");
+/// Enforce auto-update policy via the Windows Update AU registry key.
+pub fn enforce_auto_updates(policy: &osfm_edm_common::policy::UpdatePolicy) {
+    use osfm_edm_common::policy::UpdatePolicy;
+    info!(policy = ?policy, "Enforcing Windows Update policy");
+    let au_options = match policy {
+        UpdatePolicy::Disabled => "1",
+        UpdatePolicy::SecurityOnly => "3",
+        UpdatePolicy::All => "4",
+    };
+    match std::process::Command::new("reg")
+        .args([
+            "add",
+            r"HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU",
+            "/v",
+            "AUOptions",
+            "/t",
+            "REG_DWORD",
+            "/d",
+            au_options,
+            "/f",
+        ])
+        .output()
+    {
+        Ok(o) if o.status.success() => info!("Windows Update AUOptions={au_options}"),
+        Ok(o) => warn!(stderr = %String::from_utf8_lossy(&o.stderr), "reg returned non-zero"),
+        Err(e) => warn!(error = %e, "reg not available"),
+    }
 }

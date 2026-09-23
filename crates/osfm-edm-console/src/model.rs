@@ -166,9 +166,16 @@ pub struct ComplianceRow {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Settings {
     pub server_url: String,
+    #[serde(default = "default_server_port")]
     pub server_port: u16,
+    #[serde(default)]
     pub tls_configured: bool,
+    #[serde(default)]
     pub ca_initialized: bool,
+}
+
+fn default_server_port() -> u16 {
+    8080
 }
 
 #[derive(Debug, Clone, Deserialize)]

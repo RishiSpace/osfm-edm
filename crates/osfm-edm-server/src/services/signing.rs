@@ -38,13 +38,9 @@ impl JobSigner {
 
         let signing_key = if key_path.exists() {
             let raw = std::fs::read(&key_path)?;
-            let bytes: [u8; 32] = raw
-                .as_slice()
-                .try_into()
-                .map_err(|_| SigningError::InvalidKey(format!(
-                    "expected 32 bytes, found {}",
-                    raw.len()
-                )))?;
+            let bytes: [u8; 32] = raw.as_slice().try_into().map_err(|_| {
+                SigningError::InvalidKey(format!("expected 32 bytes, found {}", raw.len()))
+            })?;
             tracing::info!("Loaded job signing key from {}", key_path.display());
             SigningKey::from_bytes(&bytes)
         } else {
@@ -57,8 +53,8 @@ impl JobSigner {
             key
         };
 
-        let public_key_b64 =
-            base64::engine::general_purpose::STANDARD.encode(signing_key.verifying_key().to_bytes());
+        let public_key_b64 = base64::engine::general_purpose::STANDARD
+            .encode(signing_key.verifying_key().to_bytes());
 
         Ok(Self {
             signing_key,

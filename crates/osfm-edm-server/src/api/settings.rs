@@ -24,7 +24,6 @@ async fn get_settings(
     Ok(Json(serde_json::json!({
         "data": {
             "server_port": state.config.server_port,
-            "agent_port": state.config.agent_port,
             "server_url": state.config.server_url,
             "tls_configured": state.config.tls_cert_path.is_some(),
             "ca_initialized": state.ca.is_some(),
@@ -42,11 +41,10 @@ async fn server_status(
         .fetch_one(&state.db)
         .await?;
 
-    let online_devices: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM devices WHERE status = 'online'",
-    )
-    .fetch_one(&state.db)
-    .await?;
+    let online_devices: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM devices WHERE status = 'online'")
+            .fetch_one(&state.db)
+            .await?;
 
     let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
         .fetch_one(&state.db)
@@ -56,11 +54,10 @@ async fn server_status(
         .fetch_one(&state.db)
         .await?;
 
-    let pending_jobs: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM jobs WHERE status IN ('pending', 'dispatched')",
-    )
-    .fetch_one(&state.db)
-    .await?;
+    let pending_jobs: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE status IN ('pending', 'dispatched')")
+            .fetch_one(&state.db)
+            .await?;
 
     Ok(Json(serde_json::json!({
         "data": {

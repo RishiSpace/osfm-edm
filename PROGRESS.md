@@ -316,3 +316,31 @@ The product is unusable without a web UI. Phase 13 closed the security/schema bl
 ### Validation
 - `cargo build -p osfm-edm-server -p osfm-edm-agent -p osfm-edm-console`
 - `cargo test --workspace`
+
+---
+
+## Phase 17 — LLMG completion pass — COMPLETE (2026-09-23)
+
+### Decision / Rationale / Consequence
+
+1. **Cross-platform without kernel drivers.** Windows/macOS monitors use polling (sysinfo + dir scans + netstat) instead of ETW/Endpoint Security. Rationale: zero driver/entitlement friction, tiny idle cost, same `SystemEvent` wire format. Consequence: coarser fidelity than Linux netlink/fanotify; acceptable for 2–50 devices.
+2. **Windows jobs run natively.** Package/reboot/patch commands select `Cmd` on Windows; PushFile writes bytes in-process. Package names are allow-listed to block injection without quoting gymnastics.
+3. **Security over convenience.** Compose no longer ships secrets; `AGENT_PORT` removed; audit IP comes from the TCP peer; 1 MiB body cap; retention migration 017.
+4. **Resource-light by default.** Agent reuses one sysinfo handle with minimum CPU intervals; server pool 10/1; console repaints at 5fps idle.
+
+### Stages
+
+| # | Goal | Success |
+|---|---|---|
+| 1 | Security/correctness gaps | NULL metrics handled; assign validation; jobs filters combinable; AGENT_PORT removed; audit IP from peer; body limit; retention 017; compose requires secrets; healthcheck + caps |
+| 2 | Windows | polling monitor + netsh/reg/powercfg enforcers + winget inventory + native shells |
+| 3 | macOS | polling monitor + socketfilterfw/pmset/defaults enforcers + brew inventory |
+| 4 | Resource + UI | sysinfo reuse; pool tune; 5fps idle; empty states; OS-default shell; stale labels fixed |
+| 5 | CI + docs | `.github/workflows/ci.yml`; ARCHITECTURE/README/PROGRESS current |
+
+### Built
+
+- Server: `alert_engine` NULL-tolerant; `policies` assign exactly-one validation; `jobs` list combines filters; `config` drops `agent_port`; `main` 1 MiB `RequestBodyLimitLayer` + `ConnectInfo` + pool 10/1; `audit` peer IP; migration 017 retention; compose secret-required + healthcheck + `cap_drop`/`read_only`; `Dockerfile.server` single port + HEALTHCHECK; dashboard + console drop `agent_port`.
+- Agent: Windows + macOS polling monitors; Windows + macOS enforcers wired into `policy/engine.rs` with platform checks; winget/brew inventory + patches; native-shell `package_cmd`/`reboot_cmd`/`patch_cmd` + `sanitize_package`; Windows in-process PushFile; telemetry sysinfo reuse.
+- Console/dashboard: empty states, PTY label, OS-default shell, collect-inventory label.
+- CI: rust (fmt/clippy/test), gitleaks, dashboard build, trivy server scan.

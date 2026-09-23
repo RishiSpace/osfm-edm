@@ -67,7 +67,10 @@ async fn create_job(
         .fetch_one(&state.db)
         .await?;
     if !exists {
-        return Err(ApiError::NotFound(format!("Device {} not found", body.device_id)));
+        return Err(ApiError::NotFound(format!(
+            "Device {} not found",
+            body.device_id
+        )));
     }
 
     // Insert the job.
@@ -83,9 +86,8 @@ async fn create_job(
 
     // Try to dispatch immediately if agent is connected.
     let payload: osfm_edm_common::jobs::JobPayload =
-        serde_json::from_value(body.payload.clone()).map_err(|e| {
-            ApiError::BadRequest(format!("Invalid job payload: {e}"))
-        })?;
+        serde_json::from_value(body.payload.clone())
+            .map_err(|e| ApiError::BadRequest(format!("Invalid job payload: {e}")))?;
 
     let signature = state.sign_job(&job.id, &payload);
 
@@ -117,35 +119,40 @@ async fn create_job(
 }
 
 /// GET /api/v1/jobs — list jobs with optional filters.
+/// Both filters may be combined; results stay capped at the latest 100 rows.
 async fn list_jobs(
     State(state): State<Arc<AppState>>,
     _auth: AuthUser,
     Query(params): Query<ListJobsQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let jobs: Vec<JobRow> = if let Some(device_id) = params.device_id {
-        sqlx::query_as(
-            "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, finished_at \
-             FROM jobs WHERE device_id = $1 ORDER BY created_at DESC LIMIT 100",
-        )
-        .bind(device_id)
-        .fetch_all(&state.db)
-        .await?
-    } else if let Some(status) = &params.status {
-        sqlx::query_as(
-            "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, finished_at \
-             FROM jobs WHERE status = $1 ORDER BY created_at DESC LIMIT 100",
-        )
-        .bind(status)
-        .fetch_all(&state.db)
-        .await?
-    } else {
-        sqlx::query_as(
-            "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, finished_at \
-             FROM jobs ORDER BY created_at DESC LIMIT 100",
-        )
-        .fetch_all(&state.db)
-        .await?
-    };
+    let mut conditions: Vec<&str> = Vec::new();
+    if params.device_id.is_some() {
+        conditions.push("device_id = $n");
+    }
+    if params.status.is_some() {
+        conditions.push("status = $n");
+    }
+    let mut sql = String::from(
+        "SELECT id, device_id, payload, status, exit_code, log_output, created_by, created_at, finished_at FROM jobs",
+    );
+    if !conditions.is_empty() {
+        let mut numbered = Vec::with_capacity(conditions.len());
+        for (i, cond) in conditions.iter().enumerate() {
+            numbered.push(cond.replace("$n", &format!("${}", i + 1)));
+        }
+        sql.push_str(" WHERE ");
+        sql.push_str(&numbered.join(" AND "));
+    }
+    sql.push_str(" ORDER BY created_at DESC LIMIT 100");
+
+    let mut query = sqlx::query_as::<_, JobRow>(&sql);
+    if let Some(device_id) = params.device_id {
+        query = query.bind(device_id);
+    }
+    if let Some(status) = &params.status {
+        query = query.bind(status);
+    }
+    let jobs: Vec<JobRow> = query.fetch_all(&state.db).await?;
 
     Ok(Json(serde_json::json!({ "data": jobs, "error": null })))
 }
@@ -221,5 +228,7 @@ async fn cancel_job(
         .execute(&state.db)
         .await;
 
-    Ok(Json(serde_json::json!({ "data": { "message": "Job cancelled" }, "error": null })))
+    Ok(Json(
+        serde_json::json!({ "data": { "message": "Job cancelled" }, "error": null }),
+    ))
 }

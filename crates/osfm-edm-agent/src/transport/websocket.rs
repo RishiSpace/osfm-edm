@@ -51,7 +51,11 @@ pub async fn run_ws_loop(
             }
         }
 
-        tracing::info!(backoff = backoff_secs, "Reconnecting in {} seconds", backoff_secs);
+        tracing::info!(
+            backoff = backoff_secs,
+            "Reconnecting in {} seconds",
+            backoff_secs
+        );
         tokio::time::sleep(tokio::time::Duration::from_secs(backoff_secs)).await;
         backoff_secs = (backoff_secs * 2).min(max_backoff);
     }
@@ -67,9 +71,7 @@ async fn connect_and_run(
     // headers), then add the per-device auth token as a Bearer header.
     // The server rejects connections without a valid token.
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-    let mut request = ws_url
-        .into_client_request()
-        .map_err(WsError::Tungstenite)?;
+    let mut request = ws_url.into_client_request().map_err(WsError::Tungstenite)?;
     request.headers_mut().insert(
         "Authorization",
         format!("Bearer {}", config.device_token)
@@ -78,11 +80,9 @@ async fn connect_and_run(
     );
 
     let ws_stream = if ws_url.starts_with("wss://") {
-        let pem = std::fs::read_to_string(&config.ca_path).map_err(|e| {
-            WsError::RequestBuild(format!("read CA {}: {e}", config.ca_path))
-        })?;
-        let tls = crate::tls::rustls_config_from_ca_pem(&pem)
-            .map_err(WsError::RequestBuild)?;
+        let pem = std::fs::read_to_string(&config.ca_path)
+            .map_err(|e| WsError::RequestBuild(format!("read CA {}: {e}", config.ca_path)))?;
+        let tls = crate::tls::rustls_config_from_ca_pem(&pem).map_err(WsError::RequestBuild)?;
         tokio_tungstenite::connect_async_tls_with_config(
             request,
             None,

@@ -76,9 +76,7 @@ async fn main() -> anyhow::Result<()> {
             // Need to enroll.
             let server = cli.server.as_deref().unwrap_or("https://localhost:8443");
             let token = cli.token.as_deref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Not enrolled. Use --server <url> --token <token> to enroll."
-                )
+                anyhow::anyhow!("Not enrolled. Use --server <url> --token <token> to enroll.")
             })?;
 
             enrollment::enroll(
@@ -112,9 +110,8 @@ async fn main() -> anyhow::Result<()> {
     let agent_version = env!("CARGO_PKG_VERSION").to_string();
     let heartbeat_interval = config.heartbeat_interval;
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(
-            tokio::time::Duration::from_secs(heartbeat_interval),
-        );
+        let mut interval =
+            tokio::time::interval(tokio::time::Duration::from_secs(heartbeat_interval));
 
         loop {
             interval.tick().await;
@@ -211,14 +208,13 @@ fn verify_job_signature(
     let pk_array: [u8; 32] = pk_bytes
         .try_into()
         .map_err(|_| "server pubkey is not 32 bytes".to_string())?;
-    let vk = VerifyingKey::from_bytes(&pk_array)
-        .map_err(|e| format!("invalid server pubkey: {e}"))?;
+    let vk =
+        VerifyingKey::from_bytes(&pk_array).map_err(|e| format!("invalid server pubkey: {e}"))?;
 
     let sig_bytes = base64::engine::general_purpose::STANDARD
         .decode(signature_b64)
         .map_err(|e| format!("invalid signature encoding: {e}"))?;
-    let sig = Signature::from_slice(&sig_bytes)
-        .map_err(|e| format!("invalid signature: {e}"))?;
+    let sig = Signature::from_slice(&sig_bytes).map_err(|e| format!("invalid signature: {e}"))?;
 
     let msg = osfm_edm_common::jobs::canonical_job_signing_bytes(job_id, payload);
     vk.verify(&msg, &sig)
@@ -253,9 +249,14 @@ async fn handle_server_message(
                 policy::engine::evaluate_policies(device_id, policies, &tx).await;
             });
         }
-        ServerMessage::DispatchJob { job_id, payload, signature } => {
+        ServerMessage::DispatchJob {
+            job_id,
+            payload,
+            signature,
+        } => {
             // Verify the job signature before any execution.
-            if let Err(reason) = verify_job_signature(server_pubkey, &job_id, &payload, &signature) {
+            if let Err(reason) = verify_job_signature(server_pubkey, &job_id, &payload, &signature)
+            {
                 tracing::warn!(job_id = %job_id, reason, "Rejecting unsigned/invalidly-signed job");
                 let tx = outbound_tx.clone();
                 tokio::spawn(async move {
@@ -267,7 +268,10 @@ async fn handle_server_message(
                         })
                         .await;
                     let _ = tx
-                        .send(AgentMessage::JobCompleted { job_id, exit_code: -3 })
+                        .send(AgentMessage::JobCompleted {
+                            job_id,
+                            exit_code: -3,
+                        })
                         .await;
                 });
                 return;

@@ -173,7 +173,7 @@ function CreateJobModal({
           <Select value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="run_script">Run script</option>
             <option value="reboot">Reboot</option>
-            <option value="collect_inventory">Collect inventory (agent no-op; use Refresh inventory)</option>
+            <option value="collect_inventory">Collect inventory</option>
           </Select>
         </Field>
         {kind === "run_script" && (

@@ -65,7 +65,7 @@ async fn create_enrollment_token(
     let expires_at = chrono::Utc::now() + chrono::Duration::hours(24);
 
     sqlx::query(
-        "INSERT INTO enrollment_tokens (token, created_by, expires_at) VALUES ($1, $2, $3)"
+        "INSERT INTO enrollment_tokens (token, created_by, expires_at) VALUES ($1, $2, $3)",
     )
     .bind(&token_hash)
     .bind(auth.user_id)
@@ -105,29 +105,28 @@ async fn enroll_device(
     }
 
     let token_hash = hex_sha256(body.token.as_bytes());
-    let token_row: TokenRow = sqlx::query_as(
-        "SELECT id, used, expires_at FROM enrollment_tokens WHERE token = $1"
-    )
-    .bind(&token_hash)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::BadRequest("Invalid enrollment token".to_string()))?;
+    let token_row: TokenRow =
+        sqlx::query_as("SELECT id, used, expires_at FROM enrollment_tokens WHERE token = $1")
+            .bind(&token_hash)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::BadRequest("Invalid enrollment token".to_string()))?;
 
     if token_row.used {
-        return Err(ApiError::Conflict("Enrollment token has already been used".to_string()));
+        return Err(ApiError::Conflict(
+            "Enrollment token has already been used".to_string(),
+        ));
     }
 
     if token_row.expires_at < chrono::Utc::now() {
-        return Err(ApiError::BadRequest("Enrollment token has expired".to_string()));
+        return Err(ApiError::BadRequest(
+            "Enrollment token has expired".to_string(),
+        ));
     }
 
     // Generate the per-device auth token (256-bit). Only the SHA-256 hash is
     // stored; the plaintext token is returned once to the enrolling agent.
-    let device_token = format!(
-        "{}{}",
-        Uuid::new_v4().simple(),
-        Uuid::new_v4().simple()
-    );
+    let device_token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let device_token_hash = hex_sha256(device_token.as_bytes());
 
     // Create the device record.
@@ -148,9 +147,10 @@ async fn enroll_device(
     .await?;
 
     // Issue a device certificate.
-    let ca = state.ca.as_ref().ok_or_else(|| {
-        ApiError::Internal("PKI not initialized".to_string())
-    })?;
+    let ca = state
+        .ca
+        .as_ref()
+        .ok_or_else(|| ApiError::Internal("PKI not initialized".to_string()))?;
 
     let (cert_pem, key_pem) = ca
         .issue_device_cert(device.id)
@@ -172,7 +172,7 @@ async fn enroll_device(
 
     // Mark token as used.
     sqlx::query(
-        "UPDATE enrollment_tokens SET used = true, used_at = now(), used_by = $1 WHERE id = $2"
+        "UPDATE enrollment_tokens SET used = true, used_at = now(), used_by = $1 WHERE id = $2",
     )
     .bind(device.id)
     .bind(token_row.id)

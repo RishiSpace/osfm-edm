@@ -35,4 +35,3 @@ pub fn router() -> Router<Arc<AppState>> {
         .nest("/shell", shell::router())
         .nest("/alerts", alerts::router())
 }
-

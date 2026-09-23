@@ -93,21 +93,20 @@ cargo run -p osfm-edm-console -- --api http://localhost:8080
 - [x] **Linux System Monitor** — User-space process (netlink proc connector), file (fanotify), and network (/proc/net/tcp) event tracking
 - [x] **Linux Platform Enforcers** — Firewall (ufw), USB storage (sysfs/modprobe), screen lock (gsettings/xset), auto-updates (apt)
 - [x] **Dashboard UI** — Next.js 14 console (optional) + native `egui` console (default)
+- [x] **Windows System Monitor & Enforcers** — User-space polling (sysinfo processes, directory-scan files, netstat TCP) + netsh/reg/powercfg enforcement
+- [x] **macOS System Monitor & Enforcers** — User-space polling (sysinfo processes, directory-scan files, netstat TCP) + socketfilterfw/pmset/defaults enforcement
 
 ### 🚧 Pending
 
-- [ ] **Windows System Monitor** — ETW-based process, file, network, and registry event collection
-- [ ] **macOS System Monitor** — Endpoint Security framework for process, file, and network events
-- [ ] **Platform Enforcers (Windows/macOS)** — OS-level policy enforcement via netsh, powercfg, pfctl, pmset
-- [ ] **CI/CD** — GitHub Actions pipeline, release automation
+- [ ] **CI/CD** — GitHub Actions pipeline (build/test/clippy, secret scan, dashboard build, container scan) is in `.github/workflows/ci.yml`; release automation still to do
 
 ## Current Implementation Status
 
-**Snapshot**: August 2026
+**Snapshot**: September 2026
 
-**Overall progress: ~70%** toward the full project goal (usable self-hosted platform with working dashboard, reliable alerts, active policy enforcement, and easy deployment).
+**Overall progress: ~95%** toward the full project goal (usable self-hosted platform with working dashboard, reliable alerts, active policy enforcement, and easy deployment).
 
-The project has a working Rust backend, Linux agent, and a native `egui` console (no Chromium). Remaining work is TLS, Windows/macOS agents, and CI.
+The project has a working Rust backend, cross-platform agents (Linux/Windows/macOS user-space monitors + enforcers), and a native `egui` console (no Chromium). Remaining work is release automation.
 
 ### Component Status
 
@@ -122,13 +121,13 @@ The project has a working Rust backend, Linux agent, and a native `egui` console
 | Alerts & Notifications             | Functional        | 70%     | Alert engine evaluates rules. CRUD API for rules. Schema mismatches fixed (migration 013). SMTP/webhook/ntfy.sh notification code functional. |
 | Native console (egui)              | Functional        | 80%     | `osfm-edm-console` — login, overview, devices + plots, jobs, policies, groups, alerts, reports, settings, piped shell. No browser. |
 | Web UI (optional)                  | Functional        | 80%     | Next.js 14 at `:3000` via `docker compose --profile web`. Same API. |
-| Cross-platform (Windows / macOS)   | Stubs             | 10%     | System monitor and enforcer modules contain only "not yet implemented" placeholders. |
-| Deployment (Docker, Compose, CI)   | Functional        | 70%     | Compose starts DB + server. Native console runs on the host. Web UI is an optional compose profile. No CI yet. |
+| Cross-platform (Windows / macOS)   | Implemented       | 80%     | User-space polling monitors (sysinfo + dir scan + netstat) and built-in enforcers (netsh/reg/powercfg, socketfilterfw/pmset/defaults). No kernel drivers or system extensions by design. |
+| Deployment (Docker, Compose, CI)   | Functional        | 85%     | Compose starts DB + server (secrets required, healthcheck, hardened caps). CI runs build/test/clippy + secret/dashboard/container scans. No release automation yet. |
 
 ### Known Issues
-- No CI/CD pipeline.
 - Devices enrolled before Phase 13 lack an auth token and must be re-enrolled.
 - First enroll over HTTPS needs `--ca-fingerprint` from the server log (or `--ca` / `--insecure`).
+- `docker compose up` requires `POSTGRES_PASSWORD`, `JWT_SECRET`, `ADMIN_PASSWORD` in the environment (no defaults ship).
 
 See [PROGRESS.md](PROGRESS.md) for phase-by-phase history and [ARCHITECTURE.md](ARCHITECTURE.md) for intended design.
 

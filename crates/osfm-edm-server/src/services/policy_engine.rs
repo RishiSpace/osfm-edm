@@ -46,9 +46,6 @@ pub async fn push_policies_to_device(state: &Arc<AppState>, device_id: Uuid) {
     tracing::info!(device_id = %device_id, count = defs.len(), "Pushing policies to connected agent");
 
     state
-        .send_to_agent(
-            &device_id,
-            ServerMessage::PushPolicy { policies: defs },
-        )
+        .send_to_agent(&device_id, ServerMessage::PushPolicy { policies: defs })
         .await;
 }

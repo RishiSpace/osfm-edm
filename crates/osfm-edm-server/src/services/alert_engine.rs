@@ -1,8 +1,8 @@
 //! Alert engine — evaluates alert rules against incoming telemetry and creates alert events.
 
+use crate::config::Config;
 use sqlx::PgPool;
 use uuid::Uuid;
-use crate::config::Config;
 
 /// Check alert rules for a device after a telemetry snapshot is received.
 /// Called from the WebSocket hub after inserting telemetry.
@@ -29,14 +29,16 @@ pub async fn check_alerts(db: &PgPool, config: &Config, device_id: Uuid) {
         return;
     }
 
-    // Get the latest telemetry for this device.
+    // Get the latest telemetry for this device. Columns are nullable —
+    // decode as Option and skip rules whose inputs are missing instead of
+    // failing the whole check (a NULL row previously aborted evaluation).
     #[derive(sqlx::FromRow)]
     struct LatestMetrics {
-        cpu_pct: f64,
-        ram_used_mb: i64,
-        ram_total_mb: i64,
-        disk_used_gb: f64,
-        disk_total_gb: f64,
+        cpu_pct: Option<f64>,
+        ram_used_mb: Option<i64>,
+        ram_total_mb: Option<i64>,
+        disk_used_gb: Option<f64>,
+        disk_total_gb: Option<f64>,
     }
 
     let metrics: Option<LatestMetrics> = sqlx::query_as(
@@ -53,21 +55,17 @@ pub async fn check_alerts(db: &PgPool, config: &Config, device_id: Uuid) {
 
     for rule in rules {
         let metric_value = match rule.metric.as_str() {
-            "cpu_pct" => Some(m.cpu_pct),
-            "ram_pct" => {
-                if m.ram_total_mb > 0 {
-                    Some((m.ram_used_mb as f64 / m.ram_total_mb as f64) * 100.0)
-                } else {
-                    None
+            "cpu_pct" => m.cpu_pct,
+            "ram_pct" => match (m.ram_used_mb, m.ram_total_mb) {
+                (Some(used), Some(total)) if total > 0 => {
+                    Some((used as f64 / total as f64) * 100.0)
                 }
-            }
-            "disk_pct" => {
-                if m.disk_total_gb > 0.0 {
-                    Some((m.disk_used_gb / m.disk_total_gb) * 100.0)
-                } else {
-                    None
-                }
-            }
+                _ => None,
+            },
+            "disk_pct" => match (m.disk_used_gb, m.disk_total_gb) {
+                (Some(used), Some(total)) if total > 0.0 => Some((used / total) * 100.0),
+                _ => None,
+            },
             _ => None,
         };
 

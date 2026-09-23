@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use osfm_edm_common::events::{FileOperation, SystemEvent, NetworkProtocol};
+    use osfm_edm_common::events::{FileOperation, NetworkProtocol, SystemEvent};
     use osfm_edm_common::jobs::{canonical_job_signing_bytes, JobPayload, JobStatus, ShellType};
     use osfm_edm_common::policy::{PolicyDefinition, PolicyRule, UpdatePolicy};
     use osfm_edm_common::protocol::{AgentMessage, ServerMessage, TelemetrySnapshot};
@@ -21,7 +21,9 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         let deserialized: SystemEvent = serde_json::from_str(&json).unwrap();
         match deserialized {
-            SystemEvent::ProcessStarted { pid, ppid, path, .. } => {
+            SystemEvent::ProcessStarted {
+                pid, ppid, path, ..
+            } => {
                 assert_eq!(pid, 1234);
                 assert_eq!(ppid, 1);
                 assert_eq!(path, "/usr/bin/ls");
@@ -204,7 +206,10 @@ mod tests {
         assert!(json.contains("shell_output"));
         let de: AgentMessage = serde_json::from_str(&json).unwrap();
         match de {
-            AgentMessage::ShellOutput { session_id: sid, data } => {
+            AgentMessage::ShellOutput {
+                session_id: sid,
+                data,
+            } => {
                 assert_eq!(sid, session_id);
                 assert_eq!(data, "hello world\n");
             }

@@ -29,12 +29,12 @@ pub async fn audit_layer(
     // Extract user ID from the auth header if present (best-effort).
     let user_id = extract_user_id_from_request(&request, &state);
 
-    // Extract client IP.
+    // Extract client IP from the direct TCP peer only. X-Forwarded-For is
+    // ignored: without a trusted-proxy list it is client-controlled.
     let ip_address = request
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.split(',').next().unwrap_or(s).trim().to_string());
+        .extensions()
+        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+        .map(|ci| ci.0.ip().to_string());
 
     // Execute the actual handler.
     let response = next.run(request).await;
@@ -69,11 +69,7 @@ pub async fn audit_layer(
 /// Best-effort extraction of user ID from the JWT in the Authorization header.
 /// Does not fail the request if the token is missing or invalid.
 fn extract_user_id_from_request(request: &Request<Body>, state: &AppState) -> Option<Uuid> {
-    let auth_header = request
-        .headers()
-        .get("Authorization")?
-        .to_str()
-        .ok()?;
+    let auth_header = request.headers().get("Authorization")?.to_str().ok()?;
 
     if !auth_header.starts_with("Bearer ") {
         return None;

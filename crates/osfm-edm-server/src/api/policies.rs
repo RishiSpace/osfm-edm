@@ -17,7 +17,10 @@ use crate::state::AppState;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_policies).post(create_policy))
-        .route("/:id", get(get_policy).patch(update_policy).delete(delete_policy))
+        .route(
+            "/:id",
+            get(get_policy).patch(update_policy).delete(delete_policy),
+        )
         .route("/:id/assign", post(assign_policy))
         .route("/:id/unassign", post(unassign_policy))
 }
@@ -136,11 +139,17 @@ async fn update_policy(
 
     if let Some(name) = &body.name {
         sqlx::query("UPDATE policies SET name = $1, updated_at = now() WHERE id = $2")
-            .bind(name).bind(id).execute(&state.db).await?;
+            .bind(name)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
     if let Some(desc) = &body.description {
         sqlx::query("UPDATE policies SET description = $1, updated_at = now() WHERE id = $2")
-            .bind(desc).bind(id).execute(&state.db).await?;
+            .bind(desc)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
     if let Some(rules) = &body.rules {
         sqlx::query("UPDATE policies SET rules = $1, version = version + 1, updated_at = now() WHERE id = $2")
@@ -148,7 +157,10 @@ async fn update_policy(
     }
     if let Some(enabled) = body.enabled {
         sqlx::query("UPDATE policies SET enabled = $1, updated_at = now() WHERE id = $2")
-            .bind(enabled).bind(id).execute(&state.db).await?;
+            .bind(enabled)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
 
     // Return updated.
@@ -182,7 +194,10 @@ async fn delete_policy(
         return Err(ApiError::NotFound(format!("Policy {id} not found")));
     }
 
-    Ok((StatusCode::OK, Json(serde_json::json!({ "data": { "message": "Policy deleted" }, "error": null }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "data": { "message": "Policy deleted" }, "error": null })),
+    ))
 }
 
 /// POST /api/v1/policies/:id/assign — assign policy to a device or group.
@@ -193,6 +208,17 @@ async fn assign_policy(
     Json(body): Json<AssignPolicyRequest>,
 ) -> ApiResult<impl IntoResponse> {
     auth.require_admin()?;
+
+    if body.device_id.is_none() && body.group_id.is_none() {
+        return Err(ApiError::BadRequest(
+            "assign requires exactly one of device_id or group_id".to_string(),
+        ));
+    }
+    if body.device_id.is_some() && body.group_id.is_some() {
+        return Err(ApiError::BadRequest(
+            "assign accepts only one of device_id or group_id".to_string(),
+        ));
+    }
 
     sqlx::query(
         "INSERT INTO policy_assignments (policy_id, device_id, group_id) VALUES ($1, $2, $3) \
@@ -207,7 +233,10 @@ async fn assign_policy(
     // Push the policy to the target agent if connected.
     push_policy_to_agents(&state, id).await;
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "data": { "message": "Policy assigned" }, "error": null }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "data": { "message": "Policy assigned" }, "error": null })),
+    ))
 }
 
 /// POST /api/v1/policies/:id/unassign — remove policy assignment.
@@ -229,7 +258,9 @@ async fn unassign_policy(
     .execute(&state.db)
     .await?;
 
-    Ok(Json(serde_json::json!({ "data": { "message": "Policy unassigned" }, "error": null })))
+    Ok(Json(
+        serde_json::json!({ "data": { "message": "Policy unassigned" }, "error": null }),
+    ))
 }
 
 /// Push the policy to all agents that are assigned to it and currently connected.

@@ -100,7 +100,9 @@ fn authorize_session(
         .get(&session_id)
         .map(|m| m.clone())
         .ok_or_else(|| {
-            ApiError::NotFound(format!("Shell session {session_id} not found or already closed"))
+            ApiError::NotFound(format!(
+                "Shell session {session_id} not found or already closed"
+            ))
         })?;
 
     if meta.owner_id != auth.user_id && !auth.is_admin() {
@@ -196,7 +198,9 @@ async fn stream_shell(
         .get(&session_id)
         .map(|entry| entry.value().subscribe())
         .ok_or_else(|| {
-            ApiError::NotFound(format!("Shell session {session_id} not found or already closed"))
+            ApiError::NotFound(format!(
+                "Shell session {session_id} not found or already closed"
+            ))
         })?;
 
     let stream = BroadcastStream::new(rx).filter_map(|result| {
@@ -206,13 +210,9 @@ async fn stream_shell(
                     let data = serde_json::json!({
                         "exit_code": event.exit_code,
                     });
-                    Some(Ok(Event::default()
-                        .event("closed")
-                        .data(data.to_string())))
+                    Some(Ok(Event::default().event("closed").data(data.to_string())))
                 } else {
-                    Some(Ok(Event::default()
-                        .event("output")
-                        .data(event.data)))
+                    Some(Ok(Event::default().event("output").data(event.data)))
                 }
             }
             Err(_) => {

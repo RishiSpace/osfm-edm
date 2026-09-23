@@ -3,7 +3,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, patch, post, delete};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -17,7 +17,10 @@ use crate::state::AppState;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/rules", get(list_rules).post(create_rule))
-        .route("/rules/:id", get(get_rule).patch(update_rule).delete(delete_rule))
+        .route(
+            "/rules/:id",
+            get(get_rule).patch(update_rule).delete(delete_rule),
+        )
         .route("/events", get(list_events))
         .route("/events/:id/resolve", post(resolve_event))
 }
@@ -189,31 +192,52 @@ async fn update_rule(
 
     if let Some(name) = &body.name {
         sqlx::query("UPDATE alert_rules SET name = $1 WHERE id = $2")
-            .bind(name).bind(id).execute(&state.db).await?;
+            .bind(name)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
     if let Some(metric) = &body.metric {
         sqlx::query("UPDATE alert_rules SET metric = $1 WHERE id = $2")
-            .bind(metric).bind(id).execute(&state.db).await?;
+            .bind(metric)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
     if let Some(operator) = &body.operator {
         sqlx::query("UPDATE alert_rules SET operator = $1 WHERE id = $2")
-            .bind(operator).bind(id).execute(&state.db).await?;
+            .bind(operator)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
     if let Some(threshold) = body.threshold {
         sqlx::query("UPDATE alert_rules SET threshold = $1 WHERE id = $2")
-            .bind(threshold).bind(id).execute(&state.db).await?;
+            .bind(threshold)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
     if let Some(severity) = &body.severity {
         sqlx::query("UPDATE alert_rules SET severity = $1 WHERE id = $2")
-            .bind(severity).bind(id).execute(&state.db).await?;
+            .bind(severity)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
     if let Some(channels) = &body.channels {
         sqlx::query("UPDATE alert_rules SET channels = $1 WHERE id = $2")
-            .bind(channels).bind(id).execute(&state.db).await?;
+            .bind(channels)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
     if let Some(enabled) = body.enabled {
         sqlx::query("UPDATE alert_rules SET enabled = $1 WHERE id = $2")
-            .bind(enabled).bind(id).execute(&state.db).await?;
+            .bind(enabled)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
 
     // Also update the condition JSONB to stay in sync.
@@ -233,7 +257,10 @@ async fn update_rule(
             "threshold": rule.threshold,
         });
         sqlx::query("UPDATE alert_rules SET condition = $1 WHERE id = $2")
-            .bind(&condition).bind(id).execute(&state.db).await?;
+            .bind(&condition)
+            .bind(id)
+            .execute(&state.db)
+            .await?;
     }
 
     Ok(Json(serde_json::json!({ "data": rule, "error": null })))
@@ -333,5 +360,7 @@ async fn resolve_event(
         )));
     }
 
-    Ok(Json(serde_json::json!({ "data": { "message": "Alert event resolved" }, "error": null })))
+    Ok(Json(
+        serde_json::json!({ "data": { "message": "Alert event resolved" }, "error": null }),
+    ))
 }

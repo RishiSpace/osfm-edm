@@ -6,8 +6,12 @@ use osfm_edm_common::protocol::PatchItem;
 pub fn collect_patches() -> Vec<PatchItem> {
     if cfg!(target_os = "linux") {
         collect_apt_upgradable()
-            .or_else(|| collect_dnf_updates())
+            .or_else(collect_dnf_updates)
             .unwrap_or_default()
+    } else if cfg!(target_os = "windows") {
+        collect_winget_upgrades().unwrap_or_default()
+    } else if cfg!(target_os = "macos") {
+        collect_brew_outdated().unwrap_or_default()
     } else {
         Vec::new()
     }
@@ -73,5 +77,60 @@ fn collect_dnf_updates() -> Option<Vec<PatchItem>> {
         })
         .collect();
 
+    Some(items)
+}
+
+/// Collect from `winget upgrade` (Windows).
+fn collect_winget_upgrades() -> Option<Vec<PatchItem>> {
+    let output = std::process::Command::new("winget")
+        .args(["upgrade", "--disable-interactivity"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let items = text
+        .lines()
+        .skip(2)
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 {
+                Some(PatchItem {
+                    patch_id: parts[..parts.len() - 3].join(" "),
+                    title: Some(line.trim().to_string()),
+                    severity: None,
+                    status: "available".to_string(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+    Some(items)
+}
+
+/// Collect from `brew outdated` (macOS).
+fn collect_brew_outdated() -> Option<Vec<PatchItem>> {
+    let output = std::process::Command::new("brew")
+        .args(["outdated"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let items = text
+        .lines()
+        .filter_map(|line| {
+            let name = line.split_whitespace().next()?;
+            Some(PatchItem {
+                patch_id: name.to_string(),
+                title: Some(format!("{name} update available")),
+                severity: None,
+                status: "available".to_string(),
+            })
+        })
+        .collect();
     Some(items)
 }

@@ -14,9 +14,7 @@ pub enum ServerMessage {
     /// Keepalive ping from server.
     Heartbeat,
     /// Push updated policy definitions to the agent.
-    PushPolicy {
-        policies: Vec<PolicyDefinition>,
-    },
+    PushPolicy { policies: Vec<PolicyDefinition> },
     /// Dispatch a signed job for the agent to execute.
     DispatchJob {
         job_id: Uuid,
@@ -24,26 +22,17 @@ pub enum ServerMessage {
         signature: String,
     },
     /// Cancel a previously dispatched job.
-    RevokeJob {
-        job_id: Uuid,
-    },
+    RevokeJob { job_id: Uuid },
     /// Request the agent to send a telemetry snapshot immediately.
     RequestTelemetry,
     /// Request the agent to send a software/patch inventory.
     RequestInventory,
     /// Open an interactive shell session on the agent.
-    OpenShell {
-        session_id: Uuid,
-    },
+    OpenShell { session_id: Uuid },
     /// Send stdin data to an open shell session.
-    ShellInput {
-        session_id: Uuid,
-        data: String,
-    },
+    ShellInput { session_id: Uuid, data: String },
     /// Close (terminate) an open shell session.
-    CloseShell {
-        session_id: Uuid,
-    },
+    CloseShell { session_id: Uuid },
 }
 
 /// Messages sent from an agent to the server over WebSocket.
@@ -51,17 +40,11 @@ pub enum ServerMessage {
 #[serde(tag = "msg_type", rename_all = "snake_case")]
 pub enum AgentMessage {
     /// Heartbeat response with agent version.
-    Heartbeat {
-        agent_version: String,
-    },
+    Heartbeat { agent_version: String },
     /// System telemetry snapshot (CPU, RAM, disk, uptime).
-    TelemetryReport {
-        snapshot: TelemetrySnapshot,
-    },
+    TelemetryReport { snapshot: TelemetrySnapshot },
     /// Batch of system events from the user-space monitoring infrastructure.
-    SystemEventBatch {
-        events: Vec<SystemEvent>,
-    },
+    SystemEventBatch { events: Vec<SystemEvent> },
     /// A single log line from a running job.
     JobLog {
         job_id: Uuid,
@@ -69,24 +52,16 @@ pub enum AgentMessage {
         stream: String,
     },
     /// Notification that a job has finished executing.
-    JobCompleted {
-        job_id: Uuid,
-        exit_code: i32,
-    },
+    JobCompleted { job_id: Uuid, exit_code: i32 },
     /// Compliance evaluation results for assigned policies.
-    ComplianceReport {
-        reports: Vec<ComplianceReport>,
-    },
+    ComplianceReport { reports: Vec<ComplianceReport> },
     /// Software and patch inventory from the device.
     InventoryReport {
         software: Vec<SoftwareItem>,
         patches: Vec<PatchItem>,
     },
     /// Stdout/stderr data from an open shell session.
-    ShellOutput {
-        session_id: Uuid,
-        data: String,
-    },
+    ShellOutput { session_id: Uuid, data: String },
     /// Notification that a shell session has ended.
     ShellClosed {
         session_id: Uuid,

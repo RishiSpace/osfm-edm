@@ -114,7 +114,9 @@ impl CertificateAuthority {
 
 pub fn fingerprint_der_pem(pem: &str) -> String {
     let mut bytes = pem.as_bytes();
-    let certs: Vec<_> = rustls_pemfile::certs(&mut bytes).filter_map(|c| c.ok()).collect();
+    let certs: Vec<_> = rustls_pemfile::certs(&mut bytes)
+        .filter_map(|c| c.ok())
+        .collect();
     let der = certs.first().map(|c| c.as_ref()).unwrap_or(pem.as_bytes());
     format!("{:x}", Sha256::digest(der))
 }

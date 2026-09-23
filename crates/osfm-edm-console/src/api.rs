@@ -47,7 +47,9 @@ impl Api {
                 .map_err(|e| ApiError::Message(e.to_string()))?;
             builder = builder.add_root_certificate(cert);
         }
-        let client = builder.build().map_err(|e| ApiError::Message(e.to_string()))?;
+        let client = builder
+            .build()
+            .map_err(|e| ApiError::Message(e.to_string()))?;
         Ok(Self {
             inner: std::sync::Arc::new(Inner {
                 base: base.trim_end_matches('/').to_string(),
@@ -82,7 +84,7 @@ impl Api {
     }
 
     pub fn logout(&self) -> Result<(), ApiError> {
-        let _ = self.call_empty(Method::POST, "/api/v1/auth/logout")?;
+        self.call_empty(Method::POST, "/api/v1/auth/logout")?;
         self.set_token(None);
         Ok(())
     }
@@ -91,7 +93,11 @@ impl Api {
         self.call(Method::GET, path, None::<&()>)
     }
 
-    pub fn post<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T, ApiError> {
+    pub fn post<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, ApiError> {
         self.call(Method::POST, path, Some(body))
     }
 
@@ -162,7 +168,11 @@ impl Api {
         Ok(())
     }
 
-    pub fn patch<T: DeserializeOwned, B: Serialize>(&self, path: &str, body: &B) -> Result<T, ApiError> {
+    pub fn patch<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, ApiError> {
         self.call(Method::PATCH, path, Some(body))
     }
 

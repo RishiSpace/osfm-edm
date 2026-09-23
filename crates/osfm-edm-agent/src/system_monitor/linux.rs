@@ -185,13 +185,7 @@ fn create_proc_connector_socket() -> anyhow::Result<std::os::unix::net::UnixData
     // NETLINK_CONNECTOR = 11
     const NETLINK_CONNECTOR: libc::c_int = 11;
 
-    let fd = unsafe {
-        libc::socket(
-            libc::AF_NETLINK,
-            libc::SOCK_DGRAM,
-            NETLINK_CONNECTOR,
-        )
-    };
+    let fd = unsafe { libc::socket(libc::AF_NETLINK, libc::SOCK_DGRAM, NETLINK_CONNECTOR) };
 
     if fd < 0 {
         return Err(anyhow::anyhow!(
@@ -493,10 +487,7 @@ async fn poll_processes_fallback(tx: mpsc::Sender<SystemEvent>) -> anyhow::Resul
 ///
 /// fanotify provides notification for filesystem events (open, read, write, close)
 /// with the PID of the accessing process. Requires CAP_SYS_ADMIN.
-async fn monitor_files(
-    tx: mpsc::Sender<SystemEvent>,
-    paths: &[String],
-) -> anyhow::Result<()> {
+async fn monitor_files(tx: mpsc::Sender<SystemEvent>, paths: &[String]) -> anyhow::Result<()> {
     // fanotify constants (from linux/fanotify.h).
     const FAN_CLASS_CONTENT: libc::c_uint = 0x04;
     const FAN_CLOEXEC: libc::c_uint = 0x01;
@@ -614,8 +605,7 @@ fn read_fanotify_events(fd: i32, tx: mpsc::Sender<SystemEvent>) {
 
         let mut offset = 0usize;
         while offset + meta_size <= len as usize {
-            let meta =
-                unsafe { &*(buf.as_ptr().add(offset) as *const FanotifyEventMetadata) };
+            let meta = unsafe { &*(buf.as_ptr().add(offset) as *const FanotifyEventMetadata) };
 
             if meta.event_len < meta_size as u32 {
                 break;
@@ -761,7 +751,10 @@ fn parse_hex_addr(hex: &str) -> String {
         // IPv4
         let addr = u32::from_str_radix(addr_hex, 16).unwrap_or(0);
         let bytes = addr.to_le_bytes();
-        format!("{}.{}.{}.{}:{}", bytes[0], bytes[1], bytes[2], bytes[3], port)
+        format!(
+            "{}.{}.{}.{}:{}",
+            bytes[0], bytes[1], bytes[2], bytes[3], port
+        )
     } else if addr_hex.len() == 32 {
         // IPv6 (simplified — show as hex groups)
         let mut groups = Vec::new();
@@ -770,7 +763,10 @@ fn parse_hex_addr(hex: &str) -> String {
             let word = &addr_hex[i..i + 8];
             let val = u32::from_str_radix(word, 16).unwrap_or(0);
             let bytes = val.to_le_bytes();
-            groups.push(format!("{:02x}{:02x}:{:02x}{:02x}", bytes[0], bytes[1], bytes[2], bytes[3]));
+            groups.push(format!(
+                "{:02x}{:02x}:{:02x}{:02x}",
+                bytes[0], bytes[1], bytes[2], bytes[3]
+            ));
         }
         format!("[{}]:{}", groups.join(":"), port)
     } else {

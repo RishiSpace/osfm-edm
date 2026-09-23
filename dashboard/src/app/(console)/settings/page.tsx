@@ -10,7 +10,6 @@ import type { ServerStatus } from "@/lib/types";
 
 type Settings = {
   server_port: number;
-  agent_port: number;
   server_url: string;
   tls_configured: boolean;
   ca_initialized: boolean;
@@ -46,7 +45,7 @@ export default function SettingsPage() {
             <Row k="Version" v={status?.version ?? "—"} />
             <Row k="Public URL" v={settings?.server_url ?? "—"} />
             <Row k="API port" v={String(settings?.server_port ?? "—")} />
-            <Row k="Configured agent port" v={`${settings?.agent_port ?? "—"} (unused; WS is on the API port)`} />
+            <Row k="Transport" v="HTTPS REST + WSS /ws on the API port" />
             <Row k="TLS flag" v={settings?.tls_configured ? "set" : "plain HTTP"} />
             <Row k="Internal CA" v={settings?.ca_initialized ? "ready" : "missing"} />
             <Row k="Users" v={String(status?.total_users ?? "—")} />

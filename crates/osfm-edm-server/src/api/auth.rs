@@ -113,7 +113,11 @@ async fn login(
     Json(body): Json<LoginRequest>,
 ) -> ApiResult<impl IntoResponse> {
     // In-memory per-username rate limiting (sliding window).
-    if record_failed_attempt(&state.login_attempts, &body.username, std::time::Instant::now()) {
+    if record_failed_attempt(
+        &state.login_attempts,
+        &body.username,
+        std::time::Instant::now(),
+    ) {
         return Err(ApiError::RateLimited(format!(
             "Too many login attempts for '{}' — try again in a few minutes",
             body.username
@@ -191,14 +195,12 @@ async fn login(
     let refresh_hash = format!("{:x}", Sha256::digest(refresh_token.as_bytes()));
     let refresh_expires = chrono::Utc::now() + chrono::Duration::days(7);
 
-    sqlx::query(
-        "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)"
-    )
-    .bind(user.id)
-    .bind(&refresh_hash)
-    .bind(refresh_expires)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)")
+        .bind(user.id)
+        .bind(&refresh_hash)
+        .bind(refresh_expires)
+        .execute(&state.db)
+        .await?;
 
     // Update last_login.
     sqlx::query("UPDATE users SET last_login = now() WHERE id = $1")
@@ -209,7 +211,11 @@ async fn login(
     // Set refresh token as httpOnly cookie. `Secure` is set when TLS is
     // configured — otherwise the cookie would be dropped by browsers over
     // the plain-HTTP default deployment.
-    let secure = if state.config.tls_enabled() { "; Secure" } else { "" };
+    let secure = if state.config.tls_enabled() {
+        "; Secure"
+    } else {
+        ""
+    };
     let cookie = format!(
         "refresh_token={refresh_token}; HttpOnly{secure}; SameSite=Strict; Path=/api/v1/auth; Max-Age={}",
         7 * 24 * 60 * 60
@@ -261,7 +267,7 @@ async fn refresh(
     }
 
     let token_row: RefreshRow = sqlx::query_as(
-        "SELECT user_id, revoked, expires_at FROM refresh_tokens WHERE token_hash = $1"
+        "SELECT user_id, revoked, expires_at FROM refresh_tokens WHERE token_hash = $1",
     )
     .bind(&refresh_hash)
     .fetch_optional(&state.db)
@@ -269,11 +275,15 @@ async fn refresh(
     .ok_or_else(|| ApiError::Unauthorized("Invalid refresh token".to_string()))?;
 
     if token_row.revoked {
-        return Err(ApiError::Unauthorized("Refresh token has been revoked".to_string()));
+        return Err(ApiError::Unauthorized(
+            "Refresh token has been revoked".to_string(),
+        ));
     }
 
     if token_row.expires_at < chrono::Utc::now() {
-        return Err(ApiError::Unauthorized("Refresh token has expired".to_string()));
+        return Err(ApiError::Unauthorized(
+            "Refresh token has expired".to_string(),
+        ));
     }
 
     // Look up user.
@@ -334,10 +344,13 @@ async fn logout(
     }
 
     // Clear the cookie.
-    let secure = if state.config.tls_enabled() { "; Secure" } else { "" };
-    let clear_cookie = format!(
-        "refresh_token=; HttpOnly{secure}; SameSite=Strict; Path=/api/v1/auth; Max-Age=0"
-    );
+    let secure = if state.config.tls_enabled() {
+        "; Secure"
+    } else {
+        ""
+    };
+    let clear_cookie =
+        format!("refresh_token=; HttpOnly{secure}; SameSite=Strict; Path=/api/v1/auth; Max-Age=0");
 
     Ok((
         StatusCode::OK,
@@ -388,7 +401,9 @@ async fn mfa_setup(
         6,
         1,
         30,
-        secret.to_bytes().map_err(|e| ApiError::Internal(format!("Secret error: {e}")))?,
+        secret
+            .to_bytes()
+            .map_err(|e| ApiError::Internal(format!("Secret error: {e}")))?,
         Some(auth.username.clone()),
         "OSFM-EDM".to_string(),
     )
@@ -424,17 +439,15 @@ async fn mfa_verify(
         totp_secret: Option<String>,
     }
 
-    let row: TotpRow = sqlx::query_as(
-        "SELECT totp_secret FROM users WHERE id = $1"
-    )
-    .bind(auth.user_id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
+    let row: TotpRow = sqlx::query_as("SELECT totp_secret FROM users WHERE id = $1")
+        .bind(auth.user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
 
-    let secret = row
-        .totp_secret
-        .ok_or_else(|| ApiError::BadRequest("MFA not set up — call /mfa/setup first".to_string()))?;
+    let secret = row.totp_secret.ok_or_else(|| {
+        ApiError::BadRequest("MFA not set up — call /mfa/setup first".to_string())
+    })?;
 
     let totp = totp_rs::TOTP::new(
         totp_rs::Algorithm::SHA1,
@@ -497,13 +510,11 @@ pub async fn ensure_admin_user(state: &AppState) -> anyhow::Result<()> {
 
     let password_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
 
-    sqlx::query(
-        "INSERT INTO users (username, password_hash, role) VALUES ($1, $2, 'admin')"
-    )
-    .bind(username)
-    .bind(&password_hash)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("INSERT INTO users (username, password_hash, role) VALUES ($1, $2, 'admin')")
+        .bind(username)
+        .bind(&password_hash)
+        .execute(&state.db)
+        .await?;
 
     tracing::info!(username, "Default admin user created");
     Ok(())

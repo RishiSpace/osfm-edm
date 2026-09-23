@@ -26,14 +26,13 @@ pub async fn dispatch_pending_jobs(state: &Arc<AppState>, device_id: Uuid) {
     .unwrap_or_default();
 
     for job in jobs {
-        let payload: osfm_edm_common::jobs::JobPayload =
-            match serde_json::from_value(job.payload) {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::error!(job_id = %job.id, error = %e, "Invalid job payload");
-                    continue;
-                }
-            };
+        let payload: osfm_edm_common::jobs::JobPayload = match serde_json::from_value(job.payload) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!(job_id = %job.id, error = %e, "Invalid job payload");
+                continue;
+            }
+        };
 
         let signature = state.sign_job(&job.id, &payload);
 

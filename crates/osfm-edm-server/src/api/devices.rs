@@ -169,12 +169,10 @@ async fn delete_device(
         .await?;
 
     // Drop the WS credential so the agent cannot reconnect.
-    sqlx::query(
-        "UPDATE devices SET status = 'offline', auth_token_hash = NULL WHERE id = $1",
-    )
-    .bind(id)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("UPDATE devices SET status = 'offline', auth_token_hash = NULL WHERE id = $1")
+        .bind(id)
+        .execute(&state.db)
+        .await?;
 
     state.disconnect_agent(&id);
 

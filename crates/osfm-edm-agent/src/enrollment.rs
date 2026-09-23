@@ -52,7 +52,11 @@ pub struct EnrollOpts {
     pub insecure: bool,
 }
 
-pub async fn enroll(server_url: &str, token: &str, opts: &EnrollOpts) -> Result<AgentConfig, EnrollError> {
+pub async fn enroll(
+    server_url: &str,
+    token: &str,
+    opts: &EnrollOpts,
+) -> Result<AgentConfig, EnrollError> {
     let hostname = gethostname();
     let os = current_os();
     let os_version = os_version_string();
@@ -100,7 +104,9 @@ pub async fn enroll(server_url: &str, token: &str, opts: &EnrollOpts) -> Result<
     let ca_path = AgentConfig::save_pem("ca.crt", &data.ca_pem)?;
 
     if data.device_token.is_empty() {
-        tracing::warn!("Server returned no device token — agent will not be able to connect over WebSocket");
+        tracing::warn!(
+            "Server returned no device token — agent will not be able to connect over WebSocket"
+        );
     }
     if data.server_signing_pubkey.is_empty() {
         tracing::warn!("Server returned no signing public key — job signature verification will reject all jobs");
@@ -126,7 +132,10 @@ pub async fn enroll(server_url: &str, token: &str, opts: &EnrollOpts) -> Result<
     Ok(config)
 }
 
-async fn build_enroll_client(server_url: &str, opts: &EnrollOpts) -> Result<reqwest::Client, EnrollError> {
+async fn build_enroll_client(
+    server_url: &str,
+    opts: &EnrollOpts,
+) -> Result<reqwest::Client, EnrollError> {
     if opts.insecure {
         tracing::warn!("--insecure: accepting any TLS certificate (MITM possible)");
         return Ok(reqwest::Client::builder()
@@ -136,7 +145,8 @@ async fn build_enroll_client(server_url: &str, opts: &EnrollOpts) -> Result<reqw
 
     if let Some(path) = &opts.ca_path {
         let pem = std::fs::read(path).map_err(|e| EnrollError::Tls(e.to_string()))?;
-        let cert = reqwest::Certificate::from_pem(&pem).map_err(|e| EnrollError::Tls(e.to_string()))?;
+        let cert =
+            reqwest::Certificate::from_pem(&pem).map_err(|e| EnrollError::Tls(e.to_string()))?;
         return Ok(reqwest::Client::builder()
             .add_root_certificate(cert)
             .https_only(server_url.starts_with("https://"))
@@ -167,7 +177,9 @@ async fn build_enroll_client(server_url: &str, opts: &EnrollOpts) -> Result<reqw
         }
         let cert = reqwest::Certificate::from_pem(pem.as_bytes())
             .map_err(|e| EnrollError::Tls(e.to_string()))?;
-        return Ok(reqwest::Client::builder().add_root_certificate(cert).build()?);
+        return Ok(reqwest::Client::builder()
+            .add_root_certificate(cert)
+            .build()?);
     }
 
     Ok(reqwest::Client::new())

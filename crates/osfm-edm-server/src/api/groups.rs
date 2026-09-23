@@ -72,7 +72,10 @@ async fn create_group(
     .fetch_one(&state.db)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "data": group, "error": null }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "data": group, "error": null })),
+    ))
 }
 
 /// GET /api/v1/groups — list all groups with member counts.
@@ -80,11 +83,10 @@ async fn list_groups(
     State(state): State<Arc<AppState>>,
     _auth: AuthUser,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let groups: Vec<GroupRow> = sqlx::query_as(
-        "SELECT id, name, description, created_at FROM device_groups ORDER BY name",
-    )
-    .fetch_all(&state.db)
-    .await?;
+    let groups: Vec<GroupRow> =
+        sqlx::query_as("SELECT id, name, description, created_at FROM device_groups ORDER BY name")
+            .fetch_all(&state.db)
+            .await?;
 
     Ok(Json(serde_json::json!({ "data": groups, "error": null })))
 }
@@ -95,13 +97,12 @@ async fn get_group(
     _auth: AuthUser,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let group: GroupRow = sqlx::query_as(
-        "SELECT id, name, description, created_at FROM device_groups WHERE id = $1",
-    )
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::NotFound(format!("Group {id} not found")))?;
+    let group: GroupRow =
+        sqlx::query_as("SELECT id, name, description, created_at FROM device_groups WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::NotFound(format!("Group {id} not found")))?;
 
     Ok(Json(serde_json::json!({ "data": group, "error": null })))
 }
@@ -123,7 +124,9 @@ async fn delete_group(
         return Err(ApiError::NotFound(format!("Group {id} not found")));
     }
 
-    Ok(Json(serde_json::json!({ "data": { "message": "Group deleted" }, "error": null })))
+    Ok(Json(
+        serde_json::json!({ "data": { "message": "Group deleted" }, "error": null }),
+    ))
 }
 
 /// GET /api/v1/groups/:id/members — list devices in a group.
@@ -161,7 +164,10 @@ async fn add_member(
     .execute(&state.db)
     .await?;
 
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "data": { "message": "Member added" }, "error": null }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "data": { "message": "Member added" }, "error": null })),
+    ))
 }
 
 /// DELETE /api/v1/groups/:id/members/:device_id — remove a device from a group.
@@ -178,5 +184,7 @@ async fn remove_member(
         .execute(&state.db)
         .await?;
 
-    Ok(Json(serde_json::json!({ "data": { "message": "Member removed" }, "error": null })))
+    Ok(Json(
+        serde_json::json!({ "data": { "message": "Member removed" }, "error": null }),
+    ))
 }

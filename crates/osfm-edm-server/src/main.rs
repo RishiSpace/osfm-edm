@@ -18,7 +18,7 @@ use std::sync::Arc;
 use axum::http::{header, HeaderValue, Method};
 use axum::middleware as axum_mw;
 use axum::routing::get;
-use axum::{Router, response::IntoResponse};
+use axum::{response::IntoResponse, Router};
 use sqlx::postgres::PgPoolOptions;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -47,7 +47,9 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(port = config.server_port, "Configuration loaded");
 
     let db = PgPoolOptions::new()
-        .max_connections(20)
+        .max_connections(10)
+        .min_connections(1)
+        .acquire_timeout(std::time::Duration::from_secs(5))
         .connect(&config.database_url)
         .await?;
     tracing::info!("Connected to PostgreSQL");
@@ -90,7 +92,13 @@ async fn main() -> anyhow::Result<()> {
                 .parse::<HeaderValue>()
                 .unwrap_or_else(|_| HeaderValue::from_static("http://localhost:3000")),
         )
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT])
         .allow_credentials(true);
 
@@ -102,9 +110,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/enroll.ps1", get(enroll_ps1_handler))
         .route("/ws", get(ws::agent_hub::ws_handler))
         .nest("/api/v1", api::router())
-        .layer(axum_mw::from_fn_with_state(
-            state.clone(),
-            middleware::audit::audit_layer,
+        .layer((
+            axum_mw::from_fn_with_state(state.clone(), middleware::audit::audit_layer),
+            tower_http::limit::RequestBodyLimitLayer::new(1024 * 1024),
         ))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
@@ -115,7 +123,11 @@ async fn main() -> anyhow::Result<()> {
     if config.allow_insecure_http {
         tracing::warn!(%addr, "ALLOW_INSECURE_HTTP — binding plaintext HTTP");
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, app).await?;
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await?;
     } else {
         let (cert_pem, key_pem) = load_tls_material(&config, state.ca.as_ref(), &data_dir)?;
         let tls = axum_server::tls_rustls::RustlsConfig::from_pem(
@@ -125,7 +137,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
         tracing::info!(%addr, "HTTPS listening");
         axum_server::bind_rustls(addr, tls)
-            .serve(app.into_make_service())
+            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
             .await?;
     }
 
@@ -138,9 +150,14 @@ fn load_tls_material(
     data_dir: &std::path::Path,
 ) -> anyhow::Result<(String, String)> {
     if let (Some(cert), Some(key)) = (&config.tls_cert_path, &config.tls_key_path) {
-        return Ok((std::fs::read_to_string(cert)?, std::fs::read_to_string(key)?));
+        return Ok((
+            std::fs::read_to_string(cert)?,
+            std::fs::read_to_string(key)?,
+        ));
     }
-    let ca = ca.ok_or_else(|| anyhow::anyhow!("internal CA required to auto-issue a server certificate"))?;
+    let ca = ca.ok_or_else(|| {
+        anyhow::anyhow!("internal CA required to auto-issue a server certificate")
+    })?;
     Ok(services::pki::load_or_create_server_material(
         data_dir,
         ca,
@@ -155,7 +172,9 @@ async fn health_handler() -> axum::Json<serde_json::Value> {
     }))
 }
 
-async fn ca_crt_handler(axum::extract::State(state): axum::extract::State<Arc<AppState>>) -> impl IntoResponse {
+async fn ca_crt_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+) -> impl IntoResponse {
     match state.ca.as_ref() {
         Some(ca) => (
             [(header::CONTENT_TYPE, "application/x-pem-file")],
@@ -166,8 +185,14 @@ async fn ca_crt_handler(axum::extract::State(state): axum::extract::State<Arc<Ap
     }
 }
 
-async fn ca_fp_handler(axum::extract::State(state): axum::extract::State<Arc<AppState>>) -> impl IntoResponse {
-    match state.ca.as_ref().and_then(|c| c.ca_fingerprint_sha256().ok()) {
+async fn ca_fp_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+) -> impl IntoResponse {
+    match state
+        .ca
+        .as_ref()
+        .and_then(|c| c.ca_fingerprint_sha256().ok())
+    {
         Some(fp) => fp,
         None => "unavailable".into(),
     }

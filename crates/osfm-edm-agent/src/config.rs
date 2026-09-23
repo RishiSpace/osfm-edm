@@ -79,10 +79,9 @@ impl AgentConfig {
         if !path.exists() {
             return Err(ConfigError::NotEnrolled);
         }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| ConfigError::Io(e.to_string()))?;
-        let config: AgentConfig = toml::from_str(&content)
-            .map_err(|e| ConfigError::Parse(e.to_string()))?;
+        let content = std::fs::read_to_string(&path).map_err(|e| ConfigError::Io(e.to_string()))?;
+        let config: AgentConfig =
+            toml::from_str(&content).map_err(|e| ConfigError::Parse(e.to_string()))?;
         Ok(config)
     }
 
@@ -90,14 +89,12 @@ impl AgentConfig {
     /// it is written with owner-only permissions.
     pub fn save(&self) -> Result<(), ConfigError> {
         let dir = Self::config_dir();
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| ConfigError::Io(e.to_string()))?;
+        std::fs::create_dir_all(&dir).map_err(|e| ConfigError::Io(e.to_string()))?;
         set_dir_permissions(&dir);
-        let content = toml::to_string_pretty(self)
-            .map_err(|e| ConfigError::Parse(e.to_string()))?;
+        let content =
+            toml::to_string_pretty(self).map_err(|e| ConfigError::Parse(e.to_string()))?;
         let path = Self::config_path();
-        std::fs::write(&path, content)
-            .map_err(|e| ConfigError::Io(e.to_string()))?;
+        std::fs::write(&path, content).map_err(|e| ConfigError::Io(e.to_string()))?;
         set_secret_permissions(&path);
         Ok(())
     }
@@ -106,12 +103,10 @@ impl AgentConfig {
     /// (covers both private keys and certificates).
     pub fn save_pem(filename: &str, content: &str) -> Result<PathBuf, ConfigError> {
         let dir = Self::config_dir();
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| ConfigError::Io(e.to_string()))?;
+        std::fs::create_dir_all(&dir).map_err(|e| ConfigError::Io(e.to_string()))?;
         set_dir_permissions(&dir);
         let path = dir.join(filename);
-        std::fs::write(&path, content)
-            .map_err(|e| ConfigError::Io(e.to_string()))?;
+        std::fs::write(&path, content).map_err(|e| ConfigError::Io(e.to_string()))?;
         set_secret_permissions(&path);
         Ok(path)
     }

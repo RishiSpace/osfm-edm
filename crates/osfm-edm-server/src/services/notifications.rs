@@ -173,14 +173,13 @@ async fn send_email(config: &Config, to: &str, n: &AlertNotification) {
         }
     };
 
-    let mut transport_builder =
-        match AsyncSmtpTransport::<Tokio1Executor>::relay(smtp_host) {
-            Ok(t) => t.port(config.smtp_port),
-            Err(e) => {
-                tracing::error!(error = %e, smtp_host, "Failed to create SMTP transport");
-                return;
-            }
-        };
+    let mut transport_builder = match AsyncSmtpTransport::<Tokio1Executor>::relay(smtp_host) {
+        Ok(t) => t.port(config.smtp_port),
+        Err(e) => {
+            tracing::error!(error = %e, smtp_host, "Failed to create SMTP transport");
+            return;
+        }
+    };
 
     if let (Some(user), Some(pass)) = (&config.smtp_user, &config.smtp_password) {
         transport_builder =
@@ -246,18 +245,24 @@ async fn send_ntfy(server: &str, topic: &str, n: &AlertNotification) {
         _ => "3",          // default
     };
 
-    let title = format!(
-        "OSFM-EDM: {} — {}",
-        n.severity.to_uppercase(),
-        n.rule_name
-    );
+    let title = format!("OSFM-EDM: {} — {}", n.severity.to_uppercase(), n.rule_name);
 
     let client = reqwest::Client::new();
     match client
         .post(&url)
         .header("Title", &title)
         .header("Priority", priority)
-        .header("Tags", format!("{}alert", if n.severity == "critical" { "rotating_light," } else { "" }))
+        .header(
+            "Tags",
+            format!(
+                "{}alert",
+                if n.severity == "critical" {
+                    "rotating_light,"
+                } else {
+                    ""
+                }
+            ),
+        )
         .body(format!("Device: {}\n{}", n.device_id, n.message))
         .send()
         .await

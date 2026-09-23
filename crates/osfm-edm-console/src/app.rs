@@ -31,27 +31,61 @@ enum Screen {
 }
 
 enum Work {
-    Login { user: String, pass: String, totp: String },
+    Login {
+        user: String,
+        pass: String,
+        totp: String,
+    },
     Logout,
     LoadOverview,
     LoadDevices,
     LoadDevice(Uuid),
     LoadJobs,
     LoadJob(Uuid),
-    DispatchJob { device_id: Uuid, payload: serde_json::Value },
+    DispatchJob {
+        device_id: Uuid,
+        payload: serde_json::Value,
+    },
     CancelJob(Uuid),
     LoadPolicies,
-    CreatePolicy { name: String, rules: serde_json::Value },
-    TogglePolicy { id: Uuid, enabled: bool },
+    CreatePolicy {
+        name: String,
+        rules: serde_json::Value,
+    },
+    TogglePolicy {
+        id: Uuid,
+        enabled: bool,
+    },
     DeletePolicy(Uuid),
-    AssignPolicy { id: Uuid, device_id: Option<Uuid>, group_id: Option<Uuid> },
+    AssignPolicy {
+        id: Uuid,
+        device_id: Option<Uuid>,
+        group_id: Option<Uuid>,
+    },
     LoadGroups,
-    CreateGroup { name: String, description: String },
+    CreateGroup {
+        name: String,
+        description: String,
+    },
     DeleteGroup(Uuid),
-    AddMember { group: Uuid, device: Uuid },
-    RemoveMember { group: Uuid, device: Uuid },
-    LoadAlerts { unresolved: bool },
-    CreateAlert { name: String, metric: String, operator: String, threshold: f64, severity: String },
+    AddMember {
+        group: Uuid,
+        device: Uuid,
+    },
+    RemoveMember {
+        group: Uuid,
+        device: Uuid,
+    },
+    LoadAlerts {
+        unresolved: bool,
+    },
+    CreateAlert {
+        name: String,
+        metric: String,
+        operator: String,
+        threshold: f64,
+        severity: String,
+    },
     DeleteAlert(Uuid),
     ResolveEvent(Uuid),
     LoadReports,
@@ -63,7 +97,10 @@ enum Work {
     RequestTelemetry(Uuid),
     RevokeDevice(Uuid),
     OpenShell(Uuid),
-    ShellInput { session: Uuid, data: String },
+    ShellInput {
+        session: Uuid,
+        data: String,
+    },
     CloseShell(Uuid),
 }
 
@@ -71,16 +108,40 @@ enum Reply {
     Error(String),
     LoggedIn(User),
     LoggedOut,
-    Overview { status: ServerStatus, devices: Vec<Device>, jobs: Vec<Job>, alerts: Vec<AlertEvent> },
+    Overview {
+        status: ServerStatus,
+        devices: Vec<Device>,
+        jobs: Vec<Job>,
+        alerts: Vec<AlertEvent>,
+    },
     Devices(Vec<Device>),
-    Device { device: Device, metrics: Vec<Metric>, software: Vec<SoftwareItem>, patches: DevicePatches },
+    Device {
+        device: Device,
+        metrics: Vec<Metric>,
+        software: Vec<SoftwareItem>,
+        patches: DevicePatches,
+    },
     Jobs(Vec<Job>),
     Job(Job),
-    Policies { policies: Vec<Policy>, devices: Vec<Device>, groups: Vec<Group> },
-    Groups { groups: Vec<Group>, members: Vec<(Uuid, Vec<GroupMember>)>, devices: Vec<Device> },
-    Alerts { rules: Vec<AlertRule>, events: Vec<AlertEvent> },
+    Policies {
+        policies: Vec<Policy>,
+        devices: Vec<Device>,
+        groups: Vec<Group>,
+    },
+    Groups {
+        groups: Vec<Group>,
+        members: Vec<(Uuid, Vec<GroupMember>)>,
+        devices: Vec<Device>,
+    },
+    Alerts {
+        rules: Vec<AlertRule>,
+        events: Vec<AlertEvent>,
+    },
     Reports(ComplianceFleet),
-    Settings { settings: Settings, status: ServerStatus },
+    Settings {
+        settings: Settings,
+        status: ServerStatus,
+    },
     Token(EnrollToken),
     MfaUrl(String),
     MfaEnabled,
@@ -168,7 +229,10 @@ impl Console {
             selected_device: None,
             metrics: Vec::new(),
             software: Vec::new(),
-            patches: DevicePatches { pending_count: 0, patches: Vec::new() },
+            patches: DevicePatches {
+                pending_count: 0,
+                patches: Vec::new(),
+            },
             jobs: Vec::new(),
             selected_job: None,
             job_detail: None,
@@ -222,14 +286,24 @@ impl Console {
                     self.user = None;
                     self.screen = Screen::Overview;
                 }
-                Reply::Overview { status, devices, jobs, alerts } => {
+                Reply::Overview {
+                    status,
+                    devices,
+                    jobs,
+                    alerts,
+                } => {
                     self.status = Some(status);
                     self.devices = devices;
                     self.jobs = jobs;
                     self.alert_events = alerts;
                 }
                 Reply::Devices(d) => self.devices = d,
-                Reply::Device { device, metrics, software, patches } => {
+                Reply::Device {
+                    device,
+                    metrics,
+                    software,
+                    patches,
+                } => {
                     self.selected_device = Some(device.id);
                     self.devices.retain(|x| x.id != device.id);
                     self.devices.insert(0, device);
@@ -242,12 +316,20 @@ impl Console {
                     self.selected_job = Some(j.id);
                     self.job_detail = Some(j);
                 }
-                Reply::Policies { policies, devices, groups } => {
+                Reply::Policies {
+                    policies,
+                    devices,
+                    groups,
+                } => {
                     self.policies = policies;
                     self.devices = devices;
                     self.groups = groups;
                 }
-                Reply::Groups { groups, members, devices } => {
+                Reply::Groups {
+                    groups,
+                    members,
+                    devices,
+                } => {
                     self.groups = groups;
                     self.group_members = members;
                     self.devices = devices;
@@ -296,7 +378,9 @@ impl Console {
                     }
                     Screen::Policies => self.send(Work::LoadPolicies),
                     Screen::Groups => self.send(Work::LoadGroups),
-                    Screen::Alerts => self.send(Work::LoadAlerts { unresolved: self.unresolved_only }),
+                    Screen::Alerts => self.send(Work::LoadAlerts {
+                        unresolved: self.unresolved_only,
+                    }),
                     Screen::Reports => self.send(Work::LoadReports),
                     Screen::Settings => self.send(Work::LoadSettings),
                     Screen::Shell => {}
@@ -319,11 +403,14 @@ impl Console {
 impl eframe::App for Console {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.pump();
+        // Idle 5fps is enough for an admin console; input wakes it immediately.
         ctx.request_repaint_after(std::time::Duration::from_millis(200));
 
         if self.user.is_some() && !self.busy {
             let due = match self.screen {
-                Screen::Overview if self.last_refresh.elapsed().as_secs() >= 15 => Some(Work::LoadOverview),
+                Screen::Overview if self.last_refresh.elapsed().as_secs() >= 15 => {
+                    Some(Work::LoadOverview)
+                }
                 Screen::Job if self.last_refresh.elapsed().as_secs() >= 2 => {
                     self.selected_job.map(Work::LoadJob)
                 }
@@ -410,7 +497,9 @@ impl Console {
                 Screen::Jobs => self.send(Work::LoadJobs),
                 Screen::Policies => self.send(Work::LoadPolicies),
                 Screen::Groups => self.send(Work::LoadGroups),
-                Screen::Alerts => self.send(Work::LoadAlerts { unresolved: self.unresolved_only }),
+                Screen::Alerts => self.send(Work::LoadAlerts {
+                    unresolved: self.unresolved_only,
+                }),
                 Screen::Reports => self.send(Work::LoadReports),
                 Screen::Settings => self.send(Work::LoadSettings),
                 _ => {}
@@ -433,7 +522,11 @@ impl Console {
                     ui.add(egui::TextEdit::singleline(&mut self.username).desired_width(280.0));
                     ui.end_row();
                     ui.label("Password");
-                    ui.add(egui::TextEdit::singleline(&mut self.password).password(true).desired_width(280.0));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.password)
+                            .password(true)
+                            .desired_width(280.0),
+                    );
                     ui.end_row();
                     ui.label("TOTP");
                     ui.add(egui::TextEdit::singleline(&mut self.totp).desired_width(280.0));
@@ -441,7 +534,11 @@ impl Console {
                 });
                 ui.add_space(8.0);
                 let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if ui.button(RichText::new("Sign in").color(Color32::BLACK)).clicked() || enter {
+                if ui
+                    .button(RichText::new("Sign in").color(Color32::BLACK))
+                    .clicked()
+                    || enter
+                {
                     // Keep the TLS trust store from startup; only the host string changes.
                     self.send(Work::Login {
                         user: self.username.clone(),
@@ -464,16 +561,32 @@ impl Console {
         ui.heading("Overview");
         if let Some(s) = &self.status {
             ui.horizontal(|ui| {
-                stat(ui, "Online", format!("{} / {}", s.online_devices, s.total_devices));
+                stat(
+                    ui,
+                    "Online",
+                    format!("{} / {}", s.online_devices, s.total_devices),
+                );
                 stat(ui, "Connected", s.connected_agents.to_string());
                 stat(ui, "Pending jobs", s.pending_jobs.to_string());
                 stat(ui, "Policies", s.total_policies.to_string());
             });
             ui.label(RichText::new(format!("server {}", s.version)).weak());
+            if s.total_devices == 0 {
+                ui.separator();
+                ui.label(
+                    RichText::new(
+                        "No devices yet — open Settings → Generate token, then enroll an agent.",
+                    )
+                    .weak(),
+                );
+            }
         }
         ui.separator();
         ui.columns(2, |cols| {
             cols[0].label(RichText::new("Devices").strong());
+            if self.devices.is_empty() {
+                cols[0].label(RichText::new("none").weak());
+            }
             let device_hits: Vec<(Uuid, String)> = self
                 .devices
                 .iter()
@@ -487,6 +600,9 @@ impl Console {
                 }
             }
             cols[1].label(RichText::new("Recent jobs").strong());
+            if self.jobs.is_empty() {
+                cols[1].label(RichText::new("none — dispatch one from Jobs.").weak());
+            }
             let job_hits: Vec<(Uuid, String)> = self
                 .jobs
                 .iter()
@@ -512,26 +628,37 @@ impl Console {
 
     fn ui_devices(&mut self, ui: &mut egui::Ui) {
         ui.heading("Devices");
-        egui::Grid::new("dev").striped(true).min_col_width(80.0).show(ui, |ui| {
-            ui.strong("Host");
-            ui.strong("OS");
-            ui.strong("Status");
-            ui.strong("Agent");
-            ui.strong("Last seen");
-            ui.end_row();
-            let rows: Vec<_> = self.devices.clone();
-            for d in rows {
-                if ui.link(&d.hostname).clicked() {
-                    self.screen = Screen::Device;
-                    self.send(Work::LoadDevice(d.id));
-                }
-                ui.label(format!("{} {}", d.os, d.os_version.clone().unwrap_or_default()));
-                status_label(ui, &d.status);
-                ui.label(d.agent_version.clone().unwrap_or_else(|| "—".into()));
-                ui.label(d.last_seen.clone().unwrap_or_else(|| "—".into()));
+        if self.devices.is_empty() {
+            ui.label(RichText::new("No devices enrolled. Generate a token in Settings, then run the agent on a device.").weak());
+            return;
+        }
+        egui::Grid::new("dev")
+            .striped(true)
+            .min_col_width(80.0)
+            .show(ui, |ui| {
+                ui.strong("Host");
+                ui.strong("OS");
+                ui.strong("Status");
+                ui.strong("Agent");
+                ui.strong("Last seen");
                 ui.end_row();
-            }
-        });
+                let rows: Vec<_> = self.devices.clone();
+                for d in rows {
+                    if ui.link(&d.hostname).clicked() {
+                        self.screen = Screen::Device;
+                        self.send(Work::LoadDevice(d.id));
+                    }
+                    ui.label(format!(
+                        "{} {}",
+                        d.os,
+                        d.os_version.clone().unwrap_or_default()
+                    ));
+                    status_label(ui, &d.status);
+                    ui.label(d.agent_version.clone().unwrap_or_else(|| "—".into()));
+                    ui.label(d.last_seen.clone().unwrap_or_else(|| "—".into()));
+                    ui.end_row();
+                }
+            });
     }
 
     fn ui_device(&mut self, ui: &mut egui::Ui) {
@@ -594,19 +721,26 @@ impl Console {
         ui.separator();
         ui.collapsing(format!("Software ({})", self.software.len()), |ui| {
             for s in &self.software {
-                ui.label(format!("{}  {}", s.name, s.version.clone().unwrap_or_default()));
-            }
-        });
-        ui.collapsing(format!("Patches ({} pending)", self.patches.pending_count), |ui| {
-            for p in &self.patches.patches {
                 ui.label(format!(
-                    "{}  {}  {}",
-                    p.title.clone().unwrap_or_else(|| p.patch_id.clone()),
-                    p.status,
-                    p.severity.clone().unwrap_or_default()
+                    "{}  {}",
+                    s.name,
+                    s.version.clone().unwrap_or_default()
                 ));
             }
         });
+        ui.collapsing(
+            format!("Patches ({} pending)", self.patches.pending_count),
+            |ui| {
+                for p in &self.patches.patches {
+                    ui.label(format!(
+                        "{}  {}  {}",
+                        p.title.clone().unwrap_or_else(|| p.patch_id.clone()),
+                        p.status,
+                        p.severity.clone().unwrap_or_default()
+                    ));
+                }
+            },
+        );
     }
 
     fn ui_jobs(&mut self, ui: &mut egui::Ui) {
@@ -634,7 +768,7 @@ impl Console {
                             let payload = match self.job_kind {
                                 1 => serde_json::json!({"type":"reboot","delay_seconds":60}),
                                 2 => serde_json::json!({"type":"collect_inventory"}),
-                                _ => serde_json::json!({"type":"run_script","shell":"bash","script":self.job_script}),
+                                _ => serde_json::json!({"type":"run_script","shell":default_shell(),"script":self.job_script}),
                             };
                             self.send(Work::DispatchJob { device_id: d.id, payload });
                         }
@@ -679,10 +813,14 @@ impl Console {
                 self.screen = Screen::Jobs;
                 self.send(Work::LoadJobs);
             }
-            if self.is_admin() && !matches!(j.status.as_str(), "completed" | "done" | "failed" | "cancelled") {
-                if ui.button("Cancel").clicked() {
-                    self.send(Work::CancelJob(j.id));
-                }
+            if self.is_admin()
+                && !matches!(
+                    j.status.as_str(),
+                    "completed" | "done" | "failed" | "cancelled"
+                )
+                && ui.button("Cancel").clicked()
+            {
+                self.send(Work::CancelJob(j.id));
             }
         });
         status_label(ui, &j.status);
@@ -692,12 +830,19 @@ impl Console {
         });
         ui.separator();
         ui.label(RichText::new("Logs").strong());
-        egui::ScrollArea::vertical().max_height(360.0).stick_to_bottom(true).show(ui, |ui| {
-            for line in &j.logs {
-                let color = if line.stream == "stderr" { BAD } else { Color32::LIGHT_GRAY };
-                ui.colored_label(color, &line.line);
-            }
-        });
+        egui::ScrollArea::vertical()
+            .max_height(360.0)
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                for line in &j.logs {
+                    let color = if line.stream == "stderr" {
+                        BAD
+                    } else {
+                        Color32::LIGHT_GRAY
+                    };
+                    ui.colored_label(color, &line.line);
+                }
+            });
         if ui.button("Refresh").clicked() {
             self.send(Work::LoadJob(j.id));
         }
@@ -711,7 +856,8 @@ impl Console {
                 ui.checkbox(&mut self.policy_fw, "firewall");
                 ui.checkbox(&mut self.policy_usb, "block USB");
                 if ui.button("Create").clicked() && !self.policy_name.is_empty() {
-                    let mut rules = vec![serde_json::json!({"type":"firewall","enabled":self.policy_fw})];
+                    let mut rules =
+                        vec![serde_json::json!({"type":"firewall","enabled":self.policy_fw})];
                     rules.push(serde_json::json!({"type":"usb_storage","allow":!self.policy_usb}));
                     self.send(Work::CreatePolicy {
                         name: self.policy_name.clone(),
@@ -727,8 +873,14 @@ impl Console {
                     ui.label(if p.enabled { "enabled" } else { "disabled" });
                     ui.label(format!("v{}", p.version));
                     if self.is_admin() {
-                        if ui.button(if p.enabled { "Disable" } else { "Enable" }).clicked() {
-                            self.send(Work::TogglePolicy { id: p.id, enabled: !p.enabled });
+                        if ui
+                            .button(if p.enabled { "Disable" } else { "Enable" })
+                            .clicked()
+                        {
+                            self.send(Work::TogglePolicy {
+                                id: p.id,
+                                enabled: !p.enabled,
+                            });
                         }
                         if ui.button("Delete").clicked() {
                             self.send(Work::DeletePolicy(p.id));
@@ -737,8 +889,11 @@ impl Console {
                 });
                 ui.monospace(p.rules.to_string());
                 if self.is_admin() {
-                    let assign: Vec<(Uuid, String)> =
-                        self.devices.iter().map(|d| (d.id, d.hostname.clone())).collect();
+                    let assign: Vec<(Uuid, String)> = self
+                        .devices
+                        .iter()
+                        .map(|d| (d.id, d.hostname.clone()))
+                        .collect();
                     ui.horizontal(|ui| {
                         for (did, host) in &assign {
                             if ui.small_button(format!("→ {host}")).clicked() {
@@ -790,17 +945,26 @@ impl Console {
                     ui.horizontal(|ui| {
                         ui.label(format!("{host} ({st})"));
                         if self.is_admin() && ui.small_button("remove").clicked() {
-                            self.send(Work::RemoveMember { group: g.id, device: *mid });
+                            self.send(Work::RemoveMember {
+                                group: g.id,
+                                device: *mid,
+                            });
                         }
                     });
                 }
                 if self.is_admin() {
-                    let add: Vec<(Uuid, String)> =
-                        self.devices.iter().map(|d| (d.id, d.hostname.clone())).collect();
+                    let add: Vec<(Uuid, String)> = self
+                        .devices
+                        .iter()
+                        .map(|d| (d.id, d.hostname.clone()))
+                        .collect();
                     ui.horizontal(|ui| {
                         for (did, host) in &add {
                             if ui.small_button(format!("+ {host}")).clicked() {
-                                self.send(Work::AddMember { group: g.id, device: *did });
+                                self.send(Work::AddMember {
+                                    group: g.id,
+                                    device: *did,
+                                });
                             }
                         }
                     });
@@ -812,8 +976,13 @@ impl Console {
     fn ui_alerts(&mut self, ui: &mut egui::Ui) {
         ui.heading("Alerts");
         ui.horizontal(|ui| {
-            if ui.checkbox(&mut self.unresolved_only, "unresolved only").changed() {
-                self.send(Work::LoadAlerts { unresolved: self.unresolved_only });
+            if ui
+                .checkbox(&mut self.unresolved_only, "unresolved only")
+                .changed()
+            {
+                self.send(Work::LoadAlerts {
+                    unresolved: self.unresolved_only,
+                });
             }
         });
         if self.is_admin() {
@@ -859,10 +1028,17 @@ impl Console {
         for e in self.alert_events.clone() {
             ui.horizontal(|ui| {
                 ui.colored_label(
-                    if e.severity.as_deref() == Some("critical") { BAD } else { WARN },
+                    if e.severity.as_deref() == Some("critical") {
+                        BAD
+                    } else {
+                        WARN
+                    },
                     e.message.clone().unwrap_or_default(),
                 );
-                if self.is_admin() && e.resolved_at.is_none() && ui.small_button("resolve").clicked() {
+                if self.is_admin()
+                    && e.resolved_at.is_none()
+                    && ui.small_button("resolve").clicked()
+                {
                     self.send(Work::ResolveEvent(e.id));
                 }
             });
@@ -895,7 +1071,10 @@ impl Console {
             ui.label(format!("Public URL: {}", s.server_url));
             ui.label(format!("API port: {}", s.server_port));
             ui.label(format!("TLS flag: {}", s.tls_configured));
-            ui.label(format!("CA: {}", if s.ca_initialized { "ready" } else { "missing" }));
+            ui.label(format!(
+                "CA: {}",
+                if s.ca_initialized { "ready" } else { "missing" }
+            ));
         }
         if let Some(st) = &self.status {
             ui.label(format!("Version {}", st.version));
@@ -931,7 +1110,7 @@ impl Console {
 
     fn ui_shell(&mut self, ui: &mut egui::Ui) {
         ui.heading("Remote shell");
-        ui.label(RichText::new("Piped /bin/sh — not a PTY").weak());
+        ui.label(RichText::new("PTY shell on the agent").weak());
         let Some(dev) = self.selected_device else {
             ui.label("Open a device first");
             return;
@@ -958,7 +1137,8 @@ impl Console {
                     .desired_width(f32::INFINITY)
                     .font(egui::TextStyle::Monospace),
             );
-            let send = ui.button("Send").clicked() || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
+            let send = ui.button("Send").clicked()
+                || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
             if send {
                 if let Some(sid) = self.shell_session {
                     let mut data = self.shell_in.clone();
@@ -1000,7 +1180,12 @@ fn run(api: &Api, work: Work) -> Result<Reply, ApiError> {
             let devices = api.get("/api/v1/devices")?;
             let jobs: Vec<Job> = api.get("/api/v1/jobs")?;
             let alerts = api.get("/api/v1/alerts/events?unresolved=true&limit=8")?;
-            Ok(Reply::Overview { status, devices, jobs, alerts })
+            Ok(Reply::Overview {
+                status,
+                devices,
+                jobs,
+                alerts,
+            })
         }
         Work::LoadDevices => Ok(Reply::Devices(api.get("/api/v1/devices")?)),
         Work::LoadDevice(id) => {
@@ -1008,12 +1193,20 @@ fn run(api: &Api, work: Work) -> Result<Reply, ApiError> {
             let metrics = api.get(&format!("/api/v1/devices/{id}/telemetry"))?;
             let software = api.get(&format!("/api/v1/software/device/{id}"))?;
             let patches = api.get(&format!("/api/v1/patches/device/{id}"))?;
-            Ok(Reply::Device { device, metrics, software, patches })
+            Ok(Reply::Device {
+                device,
+                metrics,
+                software,
+                patches,
+            })
         }
         Work::LoadJobs => Ok(Reply::Jobs(api.get("/api/v1/jobs")?)),
         Work::LoadJob(id) => Ok(Reply::Job(api.get(&format!("/api/v1/jobs/{id}"))?)),
         Work::DispatchJob { device_id, payload } => {
-            api.post_empty("/api/v1/jobs", Some(&serde_json::json!({ "device_id": device_id, "payload": payload })))?;
+            api.post_empty(
+                "/api/v1/jobs",
+                Some(&serde_json::json!({ "device_id": device_id, "payload": payload })),
+            )?;
             Ok(Reply::Jobs(api.get("/api/v1/jobs")?))
         }
         Work::CancelJob(id) => {
@@ -1026,18 +1219,28 @@ fn run(api: &Api, work: Work) -> Result<Reply, ApiError> {
             groups: api.get("/api/v1/groups")?,
         }),
         Work::CreatePolicy { name, rules } => {
-            api.post_empty("/api/v1/policies", Some(&serde_json::json!({ "name": name, "rules": rules })))?;
+            api.post_empty(
+                "/api/v1/policies",
+                Some(&serde_json::json!({ "name": name, "rules": rules })),
+            )?;
             run(api, Work::LoadPolicies)
         }
         Work::TogglePolicy { id, enabled } => {
-            let _: Policy = api.patch(&format!("/api/v1/policies/{id}"), &serde_json::json!({ "enabled": enabled }))?;
+            let _: Policy = api.patch(
+                &format!("/api/v1/policies/{id}"),
+                &serde_json::json!({ "enabled": enabled }),
+            )?;
             run(api, Work::LoadPolicies)
         }
         Work::DeletePolicy(id) => {
             api.delete(&format!("/api/v1/policies/{id}"))?;
             run(api, Work::LoadPolicies)
         }
-        Work::AssignPolicy { id, device_id, group_id } => {
+        Work::AssignPolicy {
+            id,
+            device_id,
+            group_id,
+        } => {
             api.post_empty(
                 &format!("/api/v1/policies/{id}/assign"),
                 Some(&serde_json::json!({ "device_id": device_id, "group_id": group_id })),
@@ -1052,10 +1255,17 @@ fn run(api: &Api, work: Work) -> Result<Reply, ApiError> {
                 let m: Vec<GroupMember> = api.get(&format!("/api/v1/groups/{}/members", g.id))?;
                 members.push((g.id, m));
             }
-            Ok(Reply::Groups { groups, members, devices })
+            Ok(Reply::Groups {
+                groups,
+                members,
+                devices,
+            })
         }
         Work::CreateGroup { name, description } => {
-            api.post_empty("/api/v1/groups", Some(&serde_json::json!({ "name": name, "description": description })))?;
+            api.post_empty(
+                "/api/v1/groups",
+                Some(&serde_json::json!({ "name": name, "description": description })),
+            )?;
             run(api, Work::LoadGroups)
         }
         Work::DeleteGroup(id) => {
@@ -1080,7 +1290,13 @@ fn run(api: &Api, work: Work) -> Result<Reply, ApiError> {
                 events: api.get(&format!("/api/v1/alerts/events{q}"))?,
             })
         }
-        Work::CreateAlert { name, metric, operator, threshold, severity } => {
+        Work::CreateAlert {
+            name,
+            metric,
+            operator,
+            threshold,
+            severity,
+        } => {
             api.post_empty(
                 "/api/v1/alerts/rules",
                 Some(&serde_json::json!({ "name": name, "metric": metric, "operator": operator, "threshold": threshold, "severity": severity })),
@@ -1111,15 +1327,24 @@ fn run(api: &Api, work: Work) -> Result<Reply, ApiError> {
             Ok(Reply::MfaUrl(url))
         }
         Work::MfaVerify(code) => {
-            api.post_empty("/api/v1/auth/mfa/verify", Some(&serde_json::json!({ "code": code })))?;
+            api.post_empty(
+                "/api/v1/auth/mfa/verify",
+                Some(&serde_json::json!({ "code": code })),
+            )?;
             Ok(Reply::MfaEnabled)
         }
         Work::RequestInventory(id) => {
-            api.post_empty(&format!("/api/v1/devices/{id}/request-inventory"), None::<&()>)?;
+            api.post_empty(
+                &format!("/api/v1/devices/{id}/request-inventory"),
+                None::<&()>,
+            )?;
             run(api, Work::LoadDevice(id))
         }
         Work::RequestTelemetry(id) => {
-            api.post_empty(&format!("/api/v1/devices/{id}/request-telemetry"), None::<&()>)?;
+            api.post_empty(
+                &format!("/api/v1/devices/{id}/request-telemetry"),
+                None::<&()>,
+            )?;
             run(api, Work::LoadDevice(id))
         }
         Work::RevokeDevice(id) => {
@@ -1131,7 +1356,10 @@ fn run(api: &Api, work: Work) -> Result<Reply, ApiError> {
             Ok(Reply::ShellOpened(opened.session_id))
         }
         Work::ShellInput { session, data } => {
-            api.post_empty(&format!("/api/v1/shell/{session}/input"), Some(&serde_json::json!({ "data": data })))?;
+            api.post_empty(
+                &format!("/api/v1/shell/{session}/input"),
+                Some(&serde_json::json!({ "data": data })),
+            )?;
             Ok(Reply::OkRefresh)
         }
         Work::CloseShell(session) => {
@@ -1160,6 +1388,16 @@ fn status_label(ui: &mut egui::Ui, status: &str) {
 
 fn short(id: &Uuid) -> String {
     id.to_string()[..8].to_string()
+}
+
+/// Default script shell follows the console host OS so dispatched scripts run
+/// without the user having to know the target interpreter matrix.
+fn default_shell() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "cmd"
+    } else {
+        "bash"
+    }
 }
 
 fn ram_pct(m: &Metric) -> f64 {
